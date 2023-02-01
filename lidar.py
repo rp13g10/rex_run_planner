@@ -10,10 +10,10 @@ from typing import Dict, List, Tuple
 
 import rasterio as rio
 import shapefile as shp
-from convertbng.util import convert_bng
+
+from bng_latlon import WGS84toOSGB36
 
 
-#%%
 @lru_cache(1)
 def get_all_bboxes() -> Dict[str, List[int]]:
     """Return a dictionary containing the names of all folders within the data
@@ -84,14 +84,22 @@ def get_lidar_for_bng_reference(
     all_bboxes = get_all_bboxes()
 
     # Find first available folder with boundaries that cover target grid ref
-    lidar_dir = next(
-        lidar_dir
-        for lidar_dir, bbox in all_bboxes.items()
-        if bbox[0] <= easting
-        and bbox[2] >= easting
-        and bbox[1] <= northing
-        and bbox[3] >= northing
-    )
+    try:
+        lidar_dir = next(
+            lidar_dir
+            for lidar_dir, bbox in all_bboxes.items()
+            if bbox[0] <= easting
+            and bbox[2] >= easting
+            and bbox[1] <= northing
+            and bbox[3] >= northing
+        )
+    except StopIteration as exc:
+        raise FileNotFoundError(
+            (
+                "Unable to retrieve LIDAR information for: "
+                f"{easting:.2f}, {northing:.2f}"
+            )
+        ) from exc
 
     # Fetch boundaries for desired folder
     bbox = all_bboxes[lidar_dir]
@@ -102,7 +110,6 @@ def get_lidar_for_bng_reference(
     return lidar, bbox
 
 
-#%%
 def get_elevation(lat: float, lon: float) -> float:
     """For a given latitude & longitude, retrieve an estimated elevation at
     this point. This is dependent on the relevant LIDAR data being available
@@ -116,9 +123,7 @@ def get_elevation(lat: float, lon: float) -> float:
         float: The elevation in metres of the provided coordinates
     """
     # Convert to grid reference
-    tgt = convert_bng(lon, lat)
-    easting = tgt[0][0]
-    northing = tgt[1][0]
+    easting, northing = WGS84toOSGB36(lat, lon)
 
     # Fetch LIDAR data for grid reference
     lidar, bbox = get_lidar_for_bng_reference(easting, northing)

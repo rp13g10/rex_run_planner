@@ -23,3 +23,31 @@
 # Travel to each connected node, keeping a tally of distance & elevation
 # Track visited edges to avoid repeats
 # Track maximal elevation ratio(?) to each point
+
+from maputils import find_nearest_node, calculate_distance_and_elevation
+from enrich_networkx import osm
+
+# Start by nearby park
+start_lat = 50.969540
+start_lon = -1.383318
+
+# Enter network at nearest available point
+start_node = find_nearest_node(osm, start_lat, start_lon)
+
+# Start at provided node
+# For each neighbour:
+# calculate elevation/distance changes when moving to this node
+# record these candidate moves in a list of edges, storing any required
+#   stats
+
+# For each candidate in candidates:
+# find neighbours for this node which have not yet been traversed
+# for each neighbour:
+# calculate elevation/distance changes
+# append this move to the current candidate
+# check against early stopping conditions, break if any are met
+# if neighbour is not the start node
+# append the current candidate to a new_candidates
+# if neighbour is the start node and total distance is suitable
+# append the current candidate to final_candidates
+# set candidates = new_candidates on final iteration
