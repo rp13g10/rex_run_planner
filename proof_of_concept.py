@@ -1,5 +1,13 @@
+# NOTE - Data Sources
+# https://environment.data.gov.uk/DefraDataDownload/?Mode=survey - LIDAR Data (elevation)
+# https://www.openstreetmap.org/export - Map Data
+# For seed data, used https://download.geofabrik.de/europe/great-britain/england/hampshire.html
+
+# NOTE - Tools
+# https://github.com/AndGem/OsmToRoadGraph - Extract roads from OSM data
+
 # NOTE - Proposed Algorithm
-# Load hampshire-latest.pypgr (https://github.com/AndGem/OsmToRoadGraph)
+
 # Read nodes & edges into a networkx graph
 # Generalize elevation getter to use multiple lidar files
 # Annotate each edge with an elevation gain & loss
