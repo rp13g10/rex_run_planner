@@ -38,7 +38,14 @@ def find_nearest_node(graph, lat, lon):
     return closest_node
 
 
-def calculate_distance_and_elevation(graph, start_id, end_id):
+def fetch_node_coords(graph, node_id):
+    node = graph.nodes[node_id]
+    lat = node["lat"]
+    lon = node["lon"]
+    return lat, lon
+
+
+def calculate_distance_and_elevation(graph, start_id, end_id, mode="metric"):
 
     start_node = graph.nodes[start_id]
     end_node = graph.nodes[end_id]
@@ -53,5 +60,14 @@ def calculate_distance_and_elevation(graph, start_id, end_id):
 
     ele_change = end_ele - start_ele
     dist_change = distance((start_lat, start_lon), (end_lat, end_lon))
+
+    if mode == "metric":
+        dist_change = dist_change.kilometers
+    elif mode == "imperial":
+        dist_change = dist_change.miles
+    else:
+        raise ValueError(
+            f'mode must be one of "metric", "imperial". Got "{mode}"'
+        )
 
     return dist_change, ele_change

@@ -18,11 +18,13 @@
 # Implement pathfinding algorithm to maximize elevation
 # Export the route to .gpx
 
-# NOTE - Traversal
-# Find starting node closest to selected point
-# Travel to each connected node, keeping a tally of distance & elevation
-# Track visited edges to avoid repeats
-# Track maximal elevation ratio(?) to each point
+# TODO
+# Improve pruning algorithm
+# - Use proximity to local maxima / stdev of elevation in certain radius?
+# - Minimise memory footprint of network, strip out extra data & remove any
+#   dead ends?
+# Check whether OSM data already includes elevation info?
+# See whether multithreading is an option
 
 from maputils import find_nearest_node, calculate_distance_and_elevation
 from enrich_networkx import osm
@@ -31,23 +33,26 @@ from enrich_networkx import osm
 start_lat = 50.969540
 start_lon = -1.383318
 
+# Finish at the top of Pitmore Hill
+end_lat = 50.998649
+end_lon = -1.352969
+
 # Enter network at nearest available point
 start_node = find_nearest_node(osm, start_lat, start_lon)
+end_node = find_nearest_node(osm, end_lat, end_lon)
 
-# Start at provided node
-# For each neighbour:
-# calculate elevation/distance changes when moving to this node
-# record these candidate moves in a list of edges, storing any required
-#   stats
+# Calculate distance from the park to the top of the hill
+distance, elevation = calculate_distance_and_elevation(
+    osm, start_node, end_node, mode="imperial"
+)
 
-# For each candidate in candidates:
-# find neighbours for this node which have not yet been traversed
-# for each neighbour:
-# calculate elevation/distance changes
-# append this move to the current candidate
-# check against early stopping conditions, break if any are met
-# if neighbour is not the start node
-# append the current candidate to a new_candidates
-# if neighbour is the start node and total distance is suitable
-# append the current candidate to final_candidates
-# set candidates = new_candidates on final iteration
+# Performance improvements:
+# Add distance/elevation changes to node edges
+# Prune similar routes?
+# DOWNLOAD MORE LIDAR DATA!
+
+# sudo docker run -v /myredis/conf:/home/ross/repos/rex-run-planner/redis --name myredis -p 6379:6379 redis redis-server /home/ross/repos/rex-run-planner/redis/redis.conf
+
+# 10km Performance
+# Limit to 100k best after each iteration: 20:32, no routes found
+# Limit to 100k random after each iteration:
