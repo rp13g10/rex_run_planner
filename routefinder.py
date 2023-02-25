@@ -45,6 +45,7 @@ def prune_routes(routes, max_routes, max_distance):
     # Grid size up to 0.5*0.5km. Make this static in a future build
     # TODO: Filter out bins which don't contain any nodes? Possibly generate
     #       tuples (boundaries) to iterate over first.
+    #       Any way to generate & divide up a shapefile?
     lat_bins = np.linspace(min(all_lats), max(all_lats), int(max_distance * 2))
     lon_bins = np.linspace(min(all_lons), max(all_lons), int(max_distance * 2))
 
@@ -266,19 +267,26 @@ def plot_route(route, mode="metric"):
     return fig
 
 
-valid_routes = find_routes(50.969540, -1.383318, 5.0, max_candidates=100000)
+target_distance = 17.0
+valid_routes = find_routes(
+    50.969540, -1.383318, target_distance, max_candidates=32000
+)
 
 for inx, route in enumerate(valid_routes[:50]):
     fig = plot_route(route)
     dist = route["distance"]
     elev = route["elevation_gain"]
-    fig.write_html(f"plots/hilly_{inx}_{dist}_{elev}.html")
+    fig.write_html(f"plots/hilly/{target_distance}_{inx}_{elev}.html")
 
 for inx, route in enumerate(valid_routes[-50:]):
     fig = plot_route(route)
     dist = route["distance"]
     elev = route["elevation_gain"]
-    fig.write_html(f"plots/flat_{inx}_{dist}_{elev}.html")
+    fig.write_html(f"plots/flat/{target_distance}_{inx}_{elev}.html")
 
+import pickle
+
+with open("data/all_routes.pkl", "wb") as fobj:
+    pickle.dump(valid_routes, fobj)
 
 # docker run -p 6379:6379 -it redis/redis-stack:latest

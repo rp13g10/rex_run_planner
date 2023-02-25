@@ -53,6 +53,8 @@ distance, elevation = calculate_distance_and_elevation(
 
 # sudo docker run -v /myredis/conf:/home/ross/repos/rex-run-planner/redis --name myredis -p 6379:6379 redis redis-server /home/ross/repos/rex-run-planner/redis/redis.conf
 
+# 5km Performance
+# Stratified pruning to 100k: 1:25:00, 72,044 routes found
+
 # 10km Performance
 # Limit to 100k best after each iteration: 20:32, no routes found
-# Limit to 100k random after each iteration:
