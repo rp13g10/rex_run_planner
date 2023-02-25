@@ -2,6 +2,7 @@ import difflib
 import random
 
 # from rapidfuzz import fuzz
+import numpy as np
 import redis
 import tqdm
 
@@ -19,50 +20,94 @@ from enrich_networkx import osm
 pool = redis.ConnectionPool(host="localhost", port=6379, db=0)
 cache = redis.Redis(connection_pool=pool)
 
+# TODO: For final output, use difflib to ensure each suggested route is
+#       significantly different from the next.
 
-def prune_routes(routes):
 
-    if len(routes) < 6000:
+def prune_routes(routes, max_routes, max_distance):
+
+    if len(routes) < max_routes:
         return routes
 
-    # all_routes = [repr(route["route"]) for route in routes]
+    all_nodes = set()
+    for route in routes:
+        nodes = route["route"]
+        nodes = set(nodes)
+        all_nodes.update(nodes)
 
-    # deduped = process.dedupe(all_routes, threshold=90, scorer=fuzz.ratio)
-    # deduped = set(deduped)
+    all_lats = set()
+    all_lons = set()
+    for node in all_nodes:
+        lat, lon = fetch_node_coords(osm, node)
+        all_lats.add(lat)
+        all_lons.add(lon)
 
-    # new_routes = [route for route in routes if repr(route["route"]) in deduped]
+    # Grid size up to 0.5*0.5km. Make this static in a future build
+    # TODO: Filter out bins which don't contain any nodes? Possibly generate
+    #       tuples (boundaries) to iterate over first.
+    lat_bins = np.linspace(min(all_lats), max(all_lats), int(max_distance * 2))
+    lon_bins = np.linspace(min(all_lons), max(all_lons), int(max_distance * 2))
 
-    new_routes = []
-    for route in tqdm.tqdm(routes, desc="Pruning routes", leave=False):
-        is_similar = False
-        if not new_routes:
-            new_routes.append(route)
+    min_lat = min(all_lats)
+    min_lon = min(all_lons)
+
+    routes = sorted(routes, key=lambda x: x["ratio"], reverse=True)
+
+    def get_matching_routes(routes, min_lat, max_lat, min_lon, max_lon):
+
+        assert min_lat != max_lat
+        assert min_lon != max_lon
+
+        num_squares = ((max_distance * 2) - 1) ** 2
+
+        to_keep = []
+        for route in routes:
+            last_pos = route["route"][-1]
+            lat, lon = fetch_node_coords(osm, last_pos)
+            if min_lat <= lat < max_lat and min_lon <= lon < max_lon:
+                to_keep.append(route)
+            if len(to_keep) == int(max_routes / num_squares):
+                return to_keep
+        return to_keep
+
+    # TODO: If number of kept routes below max, pull through remaining with
+    #       random samples. Or, collect all routes and trim to required
+    #       length afterwards.
+
+    kept_routes = []
+    min_lat = None
+    min_lon = None
+    for lat_bin in tqdm.tqdm(lat_bins, desc="Pruning routes", leave=False):
+
+        if min_lat is None:
+            min_lat = lat_bin
             continue
-        for new_route in new_routes:
-            # similarity = fuzz.ratio(
-            #     repr(route["route"]), repr(new_route["route"])
-            # )
-            match = difflib.SequenceMatcher(route["route"], new_route["route"])
-            similarity = match.ratio()
-            if 0.8 <= similarity < 1.0:
-                is_similar = True
-                break
-            _ = None
-        if not is_similar:
-            new_routes.append(route)
-        _ = None
-    # start_count = len(routes)
-    # end_count = len(new_routes)
-    # tqdm.tqdm.write(
-    #     f"Pruning reduced candidate list from {start_count} to {end_count}"
-    # )
+        for lon_bin in lon_bins:
 
-    return new_routes
+            if min_lon is None:
+                min_lon = lon_bin
+                continue
+
+            square_routes = get_matching_routes(
+                routes, min_lat, lat_bin, min_lon, lon_bin
+            )
+            kept_routes += square_routes  # type: ignore
+
+            min_lon = lon_bin
+        min_lat = lat_bin
+
+    return kept_routes
 
 
 def find_routes(
     lat, lon, max_distance, target_elevation="max", max_candidates=50000
 ):
+
+    # TODO: Implement support for multi-threading, investigate use of
+    #       shared memory for network graph
+
+    # TODO: Check impact of max_candidates on quality of returned routes,
+    #       how low can it be set while returing good quality results?
 
     start_node = find_nearest_node(osm, lat, lon)
 
@@ -114,6 +159,10 @@ def find_routes(
                 else:
                     new_candidate["elevation_loss"] -= elevation
 
+                new_candidate["ratio"] = (
+                    new_candidate["elevation_gain"] / new_candidate["distance"]
+                )
+
                 # Stop if route can't get back to start position without going
                 # over max_distance
                 if new_candidate["distance"] > max_distance / 2:
@@ -132,10 +181,10 @@ def find_routes(
                         continue
 
                 if new_candidate["distance"] < max_distance * 1.05:
-                    cand_elevation = new_candidate["elevation_gain"]
 
                     if neighbour == start_pos:
                         if new_candidate["distance"] >= max_distance * 0.95:
+                            # TODO: Strip out redundant datapoints before storing
                             valid_routes.append(new_candidate)
                     else:
                         new_candidates.append(new_candidate)
@@ -151,14 +200,17 @@ def find_routes(
             # ensure retained routes are evenly spread across the local area
             # Alternatively, check proximity to local maxima and discard flat
             # routes which are far away from any hills
-            candidate_routes = random.sample(candidate_routes, max_candidates)
+            candidate_routes = prune_routes(
+                candidate_routes, max_candidates, max_distance
+            )
+            # candidate_routes = random.sample(candidate_routes, max_candidates)
             # candidate_routes = sorted(
             #     candidate_routes,
             #     key=lambda x: x["elevation_gain"],
             #     reverse=target_elevation == "max",
             # )
             # candidate_routes = candidate_routes[:max_candidates]
-            n_candidates = max_candidates
+            n_candidates = len(candidate_routes)
             # TODO - Recalculate iter_dist using only retained reoutes
 
         if n_candidates:
@@ -214,15 +266,15 @@ def plot_route(route, mode="metric"):
     return fig
 
 
-valid_routes = find_routes(50.969540, -1.383318, 10.0, max_candidates=100000)
+valid_routes = find_routes(50.969540, -1.383318, 5.0, max_candidates=100000)
 
-for inx, route in enumerate(valid_routes[:25]):
+for inx, route in enumerate(valid_routes[:50]):
     fig = plot_route(route)
     dist = route["distance"]
     elev = route["elevation_gain"]
     fig.write_html(f"plots/hilly_{inx}_{dist}_{elev}.html")
 
-for inx, route in enumerate(valid_routes[-25:]):
+for inx, route in enumerate(valid_routes[-50:]):
     fig = plot_route(route)
     dist = route["distance"]
     elev = route["elevation_gain"]
