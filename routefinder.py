@@ -40,9 +40,9 @@ def plot_route(graph, route):
     return fig
 
 
-target_distance = 17
-target_elevation = "min"
-valid_routes = find_routes(
+target_distance = 3
+target_elevation = "max"
+valid_routes, last_candidates = find_routes(
     osm,
     50.969540,
     -1.383318,
@@ -50,6 +50,12 @@ valid_routes = find_routes(
     target_elevation,
     max_candidates=32000,
 )
+
+for inx, route in enumerate(last_candidates[:50]):
+    fig = plot_route(osm, route)
+    dist = route["distance"]
+    elev = route["elevation_gain"]
+    fig.write_html(f"plots/unfinished/{target_distance}_{inx}_{elev}.html")
 
 if target_elevation == "max":
     for inx, route in enumerate(valid_routes[:50]):
@@ -64,8 +70,6 @@ elif target_elevation == "min":
         dist = route["distance"]
         elev = route["elevation_gain"]
         fig.write_html(f"plots/flat/{target_distance}_{inx}_{elev}.html")
-
-import pickle
 
 with open("data/all_routes.pkl", "wb") as fobj:
     pickle.dump(valid_routes, fobj)

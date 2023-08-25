@@ -6,6 +6,8 @@ data using DEFRA exports and stores it to an additional 'elevation' attribute.
 import json
 import pickle
 
+import networkx
+from networkx import Graph
 from networkx.readwrite import json_graph
 from networkx.exception import NetworkXError
 from tqdm import tqdm
@@ -17,8 +19,12 @@ with open("./data/hampshire-latest.json", "r", encoding="utf8") as fobj:
     osm_data = json.load(fobj)
 
 # Convert to networkx, drop the JSON
-osm = json_graph.adjacency_graph(osm_data)
+osm: Graph = json_graph.adjacency_graph(osm_data)
 del osm_data
+
+# Remove any unreachable nodes
+isolates = set(networkx.isolates(osm))
+osm.remove_nodes_from(isolates)
 
 # Add elevation to all nodes where it's available
 to_delete = set()
@@ -42,8 +48,6 @@ for inx, attrs in tqdm(osm.nodes.items(), desc="Enriching Nodes", leave=False):
 
 # Remove nodes with no elevation data
 osm.remove_nodes_from(to_delete)
-
-# TODO: Get rid of any dead-end trails
 
 # Calculate elevation change & distance for each edge
 for start_id, end_id, data in tqdm(
@@ -81,6 +85,21 @@ def get_nodes_to_condense(graph):
         edges = graph.edges(id_)
         node_degree = len(edges)
         if node_degree == 2:
+            nodes.add(id_)
+
+    return nodes
+
+
+def get_nodes_to_remove(graph):
+    """For the provided graph, find all nodes which have only 1 edge
+    connected to them. These represent dead-ends, and while we require that
+    routes do not revisit nodes, can safely be removed."""
+
+    nodes = set()
+    for id_ in graph.nodes:
+        edges = graph.edges(id_)
+        node_degree = len(edges)
+        if node_degree == 1:
             nodes.add(id_)
 
     return nodes
@@ -182,6 +201,10 @@ while to_condense:
     pbar.update(1)
 
 pbar.close()
+
+to_remove = get_nodes_to_remove(osm)
+osm.remove_nodes_from(to_remove)
+print(f"Removed {len(to_remove)} dead-ends")
 
 with open("./data/hampshire-latest-compressed.nx", "wb") as fobj:
     pickle.dump(osm, fobj)

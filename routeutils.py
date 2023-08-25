@@ -51,8 +51,12 @@ def prune_routes(graph, routes, max_routes, max_distance, target_elevation):
     # TODO: Filter out bins which don't contain any nodes? Possibly generate
     #       tuples (boundaries) to iterate over first.
     #       Any way to generate & divide up a shapefile?
-    lat_bins = np.linspace(min(all_lats), max(all_lats), int(max_distance * 2))
-    lon_bins = np.linspace(min(all_lons), max(all_lons), int(max_distance * 2))
+    lat_bins = np.linspace(
+        min(all_lats), max(all_lats), int(max_distance * 2)  # type: ignore
+    )
+    lon_bins = np.linspace(
+        min(all_lons), max(all_lons), int(max_distance * 2)  # type: ignore
+    )
 
     # min_lat = min(all_lats)
     # min_lon = min(all_lons)
@@ -141,6 +145,7 @@ def find_routes(
 
     # Initialize containers
     valid_routes = []
+    final_candidates = []
     candidate_routes = [seed]
 
     pbar = tqdm.tqdm()
@@ -223,6 +228,7 @@ def find_routes(
                         new_candidates.append(new_candidate)
 
         # Update the list of candidate routes with the new one
+        final_candidates = candidate_routes
         candidate_routes = new_candidates
         n_candidates = len(candidate_routes)
 
@@ -265,4 +271,4 @@ def find_routes(
         reverse=target_elevation == "max",
     )
 
-    return valid_routes
+    return valid_routes, final_candidates
