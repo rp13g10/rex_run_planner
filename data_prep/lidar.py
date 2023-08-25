@@ -27,7 +27,7 @@ def get_all_bboxes() -> Dict[str, List[int]]:
     """
 
     bboxes = {}
-    all_lidar_dirs = glob("data/LIDAR-DTM-1m-*")
+    all_lidar_dirs = glob("./data/LIDAR-DTM-1m-*")
     for lidar_dir in all_lidar_dirs:
         # Locate shapefile
         sf_loc = glob(f"{lidar_dir}/index/*.shp")[0]
