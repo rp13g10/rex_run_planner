@@ -1,6 +1,7 @@
 import numpy as np
 import redis
 import tqdm
+from typing import Dict, List, Tuple
 
 from copy import deepcopy
 from plotly import graph_objects as go
@@ -8,12 +9,140 @@ from plotly import graph_objects as go
 from maputils import (
     fetch_node_coords,
     calculate_distance_and_elevation,
-    find_nearest_node,
+    # find_nearest_node,
 )
+
+from rex_run_planner.route_finding.utilities import find_nearest_node
+
+from rex_run_planner.data_prep.graph_tagger import GraphTagger
+
+# TODO: Refactor all functions contained here, move into route_finding
+# TODO: Switch route pruning over to using pre-calculated distances
+#       and elevations from start point
 
 pool = redis.ConnectionPool(host="localhost", port=6379, db=0)
 cache = redis.Redis(connection_pool=pool)
 
+class RouteFinder:
+
+    def __init__(self, graph, start_lat, start_lon, max_distance):
+
+        self.graph = graph
+        self.start_lat = start_lat
+        self.start_lon = start_lon
+        self.max_distance = max_distance
+
+        # TODO: Move these into config file
+        self.max_candidates = 32000
+        elevation_interval = 10
+        dist_mode = 'metric'
+
+        self.tagger = GraphTagger(self.graph, dist_mode, elevation_interval)
+
+        # Create container objects
+        self.candidates = []
+        self.valid_routes = []
+
+    # Route Seeding ###############################################################
+
+    def _create_seed_route(self):
+        
+        start_node = find_nearest_node(self.graph, self.start_lat, self.start_lon)
+
+        seed = {
+            "route": [start_node],
+            "visited": {start_node},
+            "distance": 0.0,
+            "elevation_gain": 0.0,
+            "elevation_loss": 0.0,
+            "elevation_gain_potential": 0.0,
+            "elevation_loss_potential": 0.0,
+            "route_id": "0_0"
+        }
+
+        return seed
+
+
+
+# Route Pruning ###############################################################
+    def _get_bounding_box(self) -> Dict[str, float]:
+
+        all_nodes = set()
+        for route in self.candidates:
+            nodes = route["route"]
+            nodes = set(nodes)
+            all_nodes.update(nodes)
+        
+        all_lats = set()
+        all_lons = set()
+        for node in all_nodes:
+            lat, lon = self.tagger.fetch_node_coords(node)
+            all_lats.add(lat)
+            all_lons.add(lon)
+
+        bbox = {
+            "min_lat": min(all_lats),
+            "min_lon": min(all_lons),
+            "max_lat": max(all_lats),
+            "max_lon": max(all_lons)
+        }
+
+        return bbox # type: ignore
+
+    def _generate_grid(self, bbox: Dict[str, float]) -> Dict[str, Dict[str, float]]:
+        
+        lat_bins = np.linspace(
+            bbox["min_lat"],
+            bbox["max_lat"],
+            self.max_distance * 2
+        )
+
+        lon_bins = np.linspace(
+            bbox["min_lon"],
+            bbox["max_lon"],
+            self.max_distance * 2
+        )
+
+        last_lat = None
+        last_lon = None
+        grid = {}
+        for lat_inx, lat in enumerate(lat_bins):
+
+            if lat_inx == 0:
+                last_lat = lat
+                continue
+            
+            for lon_inx, lon in enumerate(lon_bins):
+
+                if lon_inx == 0:
+                    last_lon = lon
+                    continue
+
+                bbox = {
+                    "min_lat": last_lat, # type: ignore
+                    "min_lon": last_lon, # type: ignore
+                    "max_lat": lat,
+                    "max_lon": lon
+                }
+
+                grid[f"{lat_inx}_{lon_inx}"] = bbox
+        
+        return grid
+
+
+def _calculate_terminal_grid_square(route, tagged_grid):
+    # NOTE: Skip across columns to speed this up. If a node has a latitude
+    #       outside of grid "0_0", skip ahead to "1_0"
+
+def _tag_nodes_with_terminal_grid_square(routes: List, tagged_grid: Dict[int, Dict[str, float]]) -> List:
+    # NOTE: Apply _calculate_terminal_grid_square to each node in the graph
+    # NOTE: Only apply this to nodes which have been visited during the last
+    #       iteration (collect this as an attribute of self)
+
+def _select_best_routes_for_all_grid_squares(routes: List):
+    # NOTE: Group routes by terminal grid square, select top N. Sort by current
+    #       elevation loss/gain, and factor in delta back to start (express
+    #       both as a ratio)
 
 def prune_routes(graph, routes, max_routes, max_distance, target_elevation):
     """

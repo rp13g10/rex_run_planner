@@ -2,23 +2,21 @@
 is executed directly."""
 
 import json
-import math
 import pickle
 from typing import Any, Dict, List, Tuple
 
 import networkx as nx
-import numpy as np
-from geopy.distance import distance
 from tqdm import tqdm
 from networkx.exception import NetworkXError
 from networkx.readwrite import json_graph
 
 from rex_run_planner.data_prep.lidar import get_elevation
+from rex_run_planner.data_prep.graph_utils import GraphUtils
 
 # TODO: Implement parallel processing for condensing of enriched graphs.
 
 
-class GraphEnricher:
+class GraphEnricher(GraphUtils):
     """Class which enriches the data which is provided by Open Street Maps.
     Unused data is stripped out, and elevation data is added for both nodes and
     edges. The graph itself is condensed, with nodes that lead to dead ends
@@ -54,16 +52,17 @@ class GraphEnricher:
         """
 
         # Store down user preferences
-        self.elevation_interval = elevation_interval
         assert dist_mode in {
             "metric",
             "imperial",
         }, f'mode must be one of "metric", "imperial". Got "{dist_mode}"'
-        self.dist_mode = dist_mode
         self.max_condense_passes = max_condense_passes
 
         # Read in the contents of the graph
-        self.graph = self.load_graph(source_path)
+        graph = self.load_graph(source_path)
+
+        # Store down core attributes
+        super().__init__(graph, dist_mode, elevation_interval)
 
         # Create container objects
         self.nodes_to_condense = []
@@ -120,131 +119,6 @@ class GraphEnricher:
         # Remove nodes with no elevation data
         self.graph.remove_nodes_from(to_delete)
 
-    def _fetch_node_coords(self, node_id: int) -> Tuple[int, int]:
-        """Convenience function, retrieves the latitude and longitude for a
-        single node in a graph."""
-        node = self.graph.nodes[node_id]
-        lat = node["lat"]
-        lon = node["lon"]
-        return lat, lon
-
-    def _get_elevation_checkpoints(
-        self,
-        start_lat: float,
-        start_lon: float,
-        end_lat: float,
-        end_lon: float,
-    ) -> Tuple[List[float], List[float], distance]:
-        """Given a start & end point, return a list of equally spaced latitudes
-        and longitudes between them. These can then be used to estimate the
-        elevation change between start & end by calculating loss/gain between
-        each checkpoint.
-
-        Args:
-            start_lat (float): Latitude for the start point
-            start_lon (float): Longitude for the start point
-            end_lat (float): Latitude for the end point
-            end_lon (float): Longitude for the end point
-
-        Returns:
-            Tuple[List[float], List[float], distance]: A list of latitudes and
-              a corresponding list of longitudes which represent points on an
-              edge of the graph. A geopy distance object which shows the total
-              distance between the start & end point
-        """
-        # Calculate distance from A to B
-        dist_change = distance((start_lat, start_lon), (end_lat, end_lon))
-
-        # Calculate number of checks required to get elevation every N metres
-        dist_change_m = dist_change.meters
-        no_checks = math.ceil(dist_change_m / self.elevation_interval)
-
-        # Generate latitudes & longitudes for each checkpoint
-        lat_checkpoints = list(np.linspace(start_lat, end_lat, no_checks))
-        lon_checkpoints = list(np.linspace(start_lon, end_lon, no_checks))
-
-        return lat_checkpoints, lon_checkpoints, dist_change
-
-    def _calculate_elevation_change_for_checkpoints(
-        self, lat_checkpoints: List[float], lon_checkpoints: List[float]
-    ) -> Tuple[float, float]:
-        """For the provided latitude/longitude coordinates, estimate the total
-        elevation gain/loss along the entire route.
-
-        Args:
-            lat_checkpoints (List[float]): A list of equally spaced latitudes
-              which represent points on an edge of the graph
-            lon_checkpoints (List[float]): A list of equally spaced longitudes
-              which represent points on an edge of the graph
-
-        Returns:
-            Tuple[float, float]: Elevation gain in metres, elevation loss in
-              metres
-        """
-        # Calculate elevation at each checkpoint
-        elevations = []
-        for lat, lon in zip(lat_checkpoints, lon_checkpoints):
-            elevation = get_elevation(lat, lon)
-            elevations.append(elevation)
-
-        # Work out the sum of elevation gains/losses between checkpoints
-        last_elevation = None
-        elevation_gain = 0.0
-        elevation_loss = 0.0
-        for elevation in elevations:
-            if not last_elevation:
-                last_elevation = elevation
-                continue
-            if elevation > last_elevation:
-                elevation_gain += elevation - last_elevation
-            elif elevation < last_elevation:
-                elevation_loss += last_elevation - elevation
-            last_elevation = elevation
-
-        return elevation_gain, elevation_loss
-
-    def _estimate_distance_and_elevation_change(
-        self, start_id: int, end_id: int
-    ) -> Tuple[float, float, float]:
-        """For a given start & end node, estimate the change in elevation when
-        traversing the edge between them. The number of samples used to
-        estimate the change in elevation is determined by the
-        self.elevation_interval attribute.
-
-        Args:
-            start_id (int): The starting node for edge traversal
-            end_id (int): The end node for edge traversal
-
-        Returns:
-            Tuple[float, float, float]: The distance change, elevation gain
-              and elevation loss
-        """
-        # Fetch lat/lon for the start/end nodes
-        start_lat, start_lon = self._fetch_node_coords(start_id)
-        end_lat, end_lon = self._fetch_node_coords(end_id)
-
-        (
-            lat_checkpoints,
-            lon_checkpoints,
-            dist_change,
-        ) = self._get_elevation_checkpoints(
-            start_lat, start_lon, end_lat, end_lon
-        )
-
-        (
-            elevation_gain,
-            elevation_loss,
-        ) = self._calculate_elevation_change_for_checkpoints(
-            lat_checkpoints, lon_checkpoints
-        )
-
-        # Retrieve distance in the desired form
-        if self.dist_mode == "metric":
-            dist_change = dist_change.kilometers
-        else:
-            dist_change = dist_change.miles
-
-        return dist_change, elevation_gain, elevation_loss
 
     def _enrich_source_edges(self):
         """For each edge in the graph, estimate the distance, elevation gain
@@ -432,6 +306,10 @@ class GraphEnricher:
         """
         self._remove_isolates()
         self._refresh_node_lists()
+
+        # Early stopping condition
+        if not self.nodes_to_condense:
+            return
 
         iters = 0
         pbar = tqdm(desc="Condensing Graph", total=len(self.nodes_to_condense))
