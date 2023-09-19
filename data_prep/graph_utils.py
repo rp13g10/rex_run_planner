@@ -9,6 +9,7 @@ import numpy as np
 from geopy.distance import distance
 from networkx import Graph
 
+from rex_run_planner.containers import RouteConfig
 from rex_run_planner.data_prep.lidar import get_elevation
 
 # TODO: Implement parallel processing for condensing of enriched graphs.
@@ -19,10 +20,9 @@ class GraphUtils(ABC):
     GraphEnricher and GraphTagger classes.
     """
 
-    def __init__(self, graph: Graph, dist_mode: str, elevation_interval: int):
-        self.elevation_interval = elevation_interval
-        self.dist_mode = dist_mode
+    def __init__(self, graph: Graph, config: RouteConfig):
         self.graph = graph
+        self.config = config
 
     def fetch_node_coords(self, node_id: int) -> Tuple[int, int]:
         """Convenience function, retrieves the latitude and longitude for a
@@ -61,7 +61,7 @@ class GraphUtils(ABC):
 
         # Calculate number of checks required to get elevation every N metres
         dist_change_m = dist_change.meters
-        no_checks = math.ceil(dist_change_m / self.elevation_interval)
+        no_checks = math.ceil(dist_change_m / self.config.elevation_interval)
 
         # Generate latitudes & longitudes for each checkpoint
         lat_checkpoints = list(np.linspace(start_lat, end_lat, no_checks))
@@ -143,9 +143,42 @@ class GraphUtils(ABC):
         )
 
         # Retrieve distance in the desired form
-        if self.dist_mode == "metric":
+        if self.config.dist_mode == "metric":
             dist_change = dist_change.kilometers
         else:
             dist_change = dist_change.miles
 
         return dist_change, elevation_gain, elevation_loss
+
+    def _get_straight_line_distance_and_elevation_change(
+        self, start_id: int, end_id: int
+    ) -> Tuple[float, float, float]:
+        """Calculate the change in elevation accrued when travelling in a
+        straight line from one node to another
+
+        Args:
+            start_id (int): The ID of the start node
+            end_id (int): The ID of the end node
+
+        Returns:
+            Tuple[float, float, float]: The distance from start_id to end_id,
+              the elevation gain and the elevation loss
+        """
+
+        # Elevation change
+        start_ele = self.graph.nodes[start_id]["elevation"]
+        end_ele = self.graph.nodes[end_id]["elevation"]
+        change = end_ele - start_ele
+        gain = max(0, change)
+        loss = abs(min(0, change))
+
+        # Distance change
+        start_lat, start_lon = self.fetch_node_coords(start_id)
+        end_lat, end_lon = self.fetch_node_coords(end_id)
+        dist = distance((start_lat, start_lon), (end_lat, end_lon))
+        if self.config.dist_mode == "metric":
+            dist = dist.kilometers
+        else:
+            dist = dist.miles
+
+        return dist, gain, loss

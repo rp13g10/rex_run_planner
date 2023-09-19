@@ -3,13 +3,14 @@ is executed directly."""
 
 import json
 import pickle
-from typing import Any, Dict, List, Tuple
+from typing import List, Tuple, Union, Optional
 
 import networkx as nx
 from tqdm import tqdm
 from networkx.exception import NetworkXError
 from networkx.readwrite import json_graph
 
+from rex_run_planner.containers import RouteConfig, ChainMetrics
 from rex_run_planner.data_prep.lidar import get_elevation
 from rex_run_planner.data_prep.graph_utils import GraphUtils
 
@@ -26,9 +27,7 @@ class GraphEnricher(GraphUtils):
     def __init__(
         self,
         source_path: str,
-        dist_mode: str = "metric",
-        elevation_interval: int = 10,
-        max_condense_passes: int = 5,
+        config: RouteConfig,
     ):
         """Create an instance of the graph enricher class based on the
         contents of the networkx graph specified by `source_path`
@@ -52,17 +51,21 @@ class GraphEnricher(GraphUtils):
         """
 
         # Store down user preferences
-        assert dist_mode in {
+        msg = (
+            'mode must be one of "metric", "imperial". '
+            f'Got "{config.dist_mode}"'
+        )
+        assert config.dist_mode in {
             "metric",
             "imperial",
-        }, f'mode must be one of "metric", "imperial". Got "{dist_mode}"'
-        self.max_condense_passes = max_condense_passes
+        }, msg
+        self.config = config
 
         # Read in the contents of the graph
         graph = self.load_graph(source_path)
 
         # Store down core attributes
-        super().__init__(graph, dist_mode, elevation_interval)
+        super().__init__(graph, config)
 
         # Create container objects
         self.nodes_to_condense = []
@@ -118,7 +121,6 @@ class GraphEnricher(GraphUtils):
 
         # Remove nodes with no elevation data
         self.graph.remove_nodes_from(to_delete)
-
 
     def _enrich_source_edges(self):
         """For each edge in the graph, estimate the distance, elevation gain
@@ -205,7 +207,9 @@ class GraphEnricher(GraphUtils):
 
         return node_chain, node_edges
 
-    def _calculate_chain_metrics(self, chain: List[int]) -> Dict[str, Any]:
+    def _calculate_chain_metrics(
+        self, chain: List[int]
+    ) -> Union[ChainMetrics, None]:
         """For a chain of 3 nodes, sum up the metrics for each of the edges
         which it is comprised of.
 
@@ -213,15 +217,7 @@ class GraphEnricher(GraphUtils):
             chain (List[int]): A list of 3 node IDs
 
         Returns:
-            Dict[str, Any]: A dictionary containing the following information:
-              start: The start node for the provided chain
-              end: The end node for the provided chain
-              gain: The elevation gain for the provided chain, in metres
-              loss: The elevation loss for the provided chain, in metres
-              dist: The distance travelled over the provided chain, in miles
-                    or kilometres depending on self.dist_mode
-              vias: The IDs of any nodes which formed part of the chain, but
-                    are no longer required as they were of order 2
+            ChainMetrics: A container for the calculated metrics
         """
         try:
             # Fetch the two edges for the chain
@@ -229,7 +225,7 @@ class GraphEnricher(GraphUtils):
             edge_2 = self.graph[chain[1]][chain[2]]
         except KeyError:
             # Edge does not exist in this direction
-            return {}
+            return None
 
         # Retrieve data for edge 1
         gain_1 = edge_1["elevation_gain"]
@@ -244,7 +240,7 @@ class GraphEnricher(GraphUtils):
         via_2 = edge_2.get("via", [])
 
         # Calculate whole-chain metrics
-        metrics = dict(
+        metrics = ChainMetrics(
             start=chain[0],
             end=chain[-1],
             gain=gain_1 + gain_2,
@@ -255,24 +251,24 @@ class GraphEnricher(GraphUtils):
 
         return metrics
 
-    def _add_edge_from_chain_metrics(self, metrics: Dict[str, Any]):
+    def _add_edge_from_chain_metrics(self, metrics: Union[ChainMetrics, None]):
         """Once metrics have been calculated for a node chain, use them to
         create a new edge which skips over the middle node. The ID of this
         middle node will be recorded within the `via` attribute of the new
         edge.
 
         Args:
-            metrics (Dict[str, Any]): A dictionary containing all of the data
-              required for the new edge.
+            metrics (Union[ChainMetrics, None]): Container for calculated
+              metrics for this chain
         """
         if metrics:
             self.graph.add_edge(
-                metrics["start"],
-                metrics["end"],
-                via=metrics["vias"],
-                elevation_gain=metrics["gain"],
-                elevation_loss=metrics["loss"],
-                distance=metrics["dist"],
+                metrics.start,
+                metrics.end,
+                via=metrics.vias,
+                elevation_gain=metrics.gain,
+                elevation_loss=metrics.loss,
+                distance=metrics.dist,
             )
 
     def _remove_original_edges(self, node_edges: List[Tuple[int, int]]):
@@ -312,7 +308,10 @@ class GraphEnricher(GraphUtils):
             return
 
         iters = 0
-        pbar = tqdm(desc="Condensing Graph", total=len(self.nodes_to_condense))
+        pbar = tqdm(
+            desc=f"Condensing Graph (pass {_iter})",
+            total=len(self.nodes_to_condense),
+        )
         while self.nodes_to_condense:
             node_id = self.nodes_to_condense.pop()
 
@@ -336,17 +335,37 @@ class GraphEnricher(GraphUtils):
         self._remove_dead_ends()
         tqdm.write(f"Removed {len(self.nodes_to_remove)} dead ends")
 
-        if _iter < self.max_condense_passes:
+        if _iter < self.config.max_condense_passes:
             self._condense_graph(_iter=_iter + 1)
 
-    def enrich_graph(self):
+    def enrich_graph(
+        self,
+        full_target_loc: Optional[str] = None,
+        cond_target_loc: Optional[str] = None,
+    ):
         """Enrich the graph with elevation data, calculate the change in
         elevation for each edge in the graph, and shrink the graph as much
         as possible.
+
+        Args:
+            full_target_loc (Optional[str]): The location which the full graph
+              should be saved to (pre-compression). This will be helpful if you
+              intend on plotting any routes afterwards, as not all nodes will
+              be present in the compressed graph. Defaults to None.
+            cond_target_loc (Optional[str]): The loation which the condensed
+              graph should be saved to. Defaults to None.
         """
         self._enrich_source_nodes()
         self._enrich_source_edges()
+
+        if full_target_loc:
+            self._remove_isolates()
+            self.save_graph(full_target_loc)
+
         self._condense_graph()
+
+        if cond_target_loc:
+            self.save_graph(cond_target_loc)
 
     def save_graph(self, target_loc: str):
         """Once processed, pickle the graph to the local filesystem ready for
@@ -357,9 +376,3 @@ class GraphEnricher(GraphUtils):
         """
         with open(target_loc, "wb") as fobj:
             pickle.dump(self.graph, fobj)
-
-
-if __name__ == "__main__":
-    enricher = GraphEnricher("./data/hampshire-latest.json")
-    enricher.enrich_graph()
-    enricher.save_graph("./data/hampshire-latest-compressed.nx")
