@@ -7,6 +7,13 @@ from rex_run_planner.containers import Route
 #       significantly different from the next.
 
 
+def generate_filename(route: Route) -> str:
+    gain = route.elevation_gain
+    dist = route.distance
+    name = f"gain_{gain:,.2f}_dist_{dist:,.2f}"
+    return name
+
+
 def plot_route(graph: Graph, route: Route) -> go.Figure:
     """For a generated route, generate a Plotly graph which plots it onto
     a mapbox map.

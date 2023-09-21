@@ -11,6 +11,11 @@ import pickle
 from rex_run_planner.data_prep import GraphEnricher
 from rex_run_planner.route_finding import RouteFinder
 from rex_run_planner.containers import RouteConfig
+from rex_run_planner.route_plotting import (
+    plot_route,
+    generate_filename,
+    RouteSelector,
+)
 
 # TODO: Build out unit tests for all code created so far
 # TODO: Start building this out into a webapp once plots working properly
@@ -40,3 +45,15 @@ except FileNotFoundError:
 
 finder = RouteFinder(graph=graph, config=config)
 routes = finder.find_routes()
+
+selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.9)
+selected_routes = selector.select_routes()
+
+del graph
+with open("./data/hampshire-latest-full.nx", "rb") as fobj:
+    graph = pickle.load(fobj)
+
+for route in selected_routes[:10]:
+    plot = plot_route(graph, route)
+    fname = generate_filename(route)
+    plot.write_html(f"./plots/{fname}.html")

@@ -5,6 +5,9 @@ from networkx import Graph
 from rex_run_planner.containers import RouteConfig, BBox
 from rex_run_planner.data_prep.graph_utils import GraphUtils
 
+# TODO: Change distance to start calculations to use shortest path rather than
+#       straight line distance, may save some wasted compute
+
 
 class GraphTagger(GraphUtils):
     """Before creating a set of new routes, use the GraphTagger class to

@@ -15,6 +15,10 @@ from rex_run_planner.data_prep.lidar import get_elevation
 from rex_run_planner.data_prep.graph_utils import GraphUtils
 
 # TODO: Implement parallel processing for condensing of enriched graphs.
+#       Subdivide graph into grid, distribute condensing of each subgraph
+#       then stitch the results back together. Final pass will be required to
+#       process any edges which were temporarily removed as they bridged
+#       multiple subgraphs.
 
 
 class GraphEnricher(GraphUtils):
