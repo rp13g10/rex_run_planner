@@ -46,6 +46,7 @@ class GraphTagger(GraphUtils):
         Returns:
             bool: True if node_id is inside bbox, else False
         """
+
         node_lat = self.graph.nodes[node_id]["lat"]
         node_lon = self.graph.nodes[node_id]["lon"]
 
@@ -87,9 +88,13 @@ class GraphTagger(GraphUtils):
             max_lon=start_lon + delta,
         )
 
-        nodes_to_remove = filter(
-            lambda node: self._check_if_node_is_in_target_area(node, bbox),
-            self.graph.nodes,
+        nodes_to_remove = list(
+            filter(
+                lambda node: not self._check_if_node_is_in_target_area(
+                    node, bbox
+                ),
+                self.graph.nodes,
+            )
         )
 
         self.graph.remove_nodes_from(nodes_to_remove)
@@ -100,13 +105,17 @@ class GraphTagger(GraphUtils):
         must be travelled (in a straight line) in order to get back to the
         start point."""
 
+        assert (
+            start_node in self.graph.nodes
+        ), "Start node {start_node} is not in the graph!"
+
         for node_id in self.graph.nodes:
             (
                 dist_to_start,
                 gain_to_start,
                 loss_to_start,
             ) = self._get_straight_line_distance_and_elevation_change(
-                node_id, start_node
+                start_node, node_id
             )
 
             self.graph.nodes[node_id]["dist_to_start"] = dist_to_start

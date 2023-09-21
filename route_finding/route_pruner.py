@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from typing import Dict, List, Tuple
 
@@ -36,8 +37,8 @@ class RoutePruner:
         """
         all_nodes = set()
         for route in self.candidates:
-            nodes = set(route.route)
-            all_nodes.update(nodes)
+            terminal_node = route.route[-1]
+            all_nodes.add(terminal_node)
 
         all_lats = set()
         all_lons = set()
@@ -96,6 +97,10 @@ class RoutePruner:
 
                 grid[(lat_inx, lon_inx)] = bbox
 
+                last_lon = lon
+
+            last_lat = lat
+
         return grid
 
     def _calculate_terminal_grid_square(
@@ -124,54 +129,48 @@ class RoutePruner:
 
         excluded_lats = set()
         for (lat_inx, lon_inx), bbox in tagged_grid.items():
+            if lat_inx == 17 and terminal_node == 1096242:
+                _ = None
             # Find the correct column
             if lat_inx in excluded_lats:
                 continue
             min_lat = bbox.min_lat
             max_lat = bbox.max_lat
-            if min_lat <= terminal_lat < max_lat:
+            if min_lat <= terminal_lat <= max_lat:
                 # Find the correct row
                 min_lon = bbox.min_lon
                 max_lon = bbox.max_lon
-                if min_lon <= terminal_lon < max_lon:
+                if min_lon <= terminal_lon <= max_lon:
                     return (lat_inx, lon_inx)
+            else:
+                excluded_lats.add(lat_inx)
                 continue
 
-            excluded_lats.add(lat_inx)
-
         raise KeyError(
-            "Unable to locate a terminal grid square for node: {terminal_node}"
+            f"Unable to locate a terminal grid square for node: {terminal_node}"
         )
 
     def _tag_routes_with_terminal_grid_square(
         self,
-        routes: List[Route],
         tagged_grid: Dict[Tuple[int, int], BBox],
-    ) -> List[Route]:
-        """Tag every route in a list with the grid ID in which they end
+    ):
+        """Tag every candidate route with the grid ID in which they end
 
         Args:
             routes (List[Route]): A list of candidate routes
             tagged_grid (Dict[Tuple[int, int], BBox]): A grid of bounding
               boxes
-
-        Returns:
-            List[Route]: A copy of the input routes, where each route's
-              terminal_square property has been updated with the relevant
-              grid ID
         """
         # NOTE: Apply _calculate_terminal_grid_square to each node in the graph
         # NOTE: Only apply this to nodes which have been visited during the
         #       last iteration (collect this as an attribute of self)
 
-        for route in routes:
+        for route in self.candidates:
             terminal_square = self._calculate_terminal_grid_square(
                 route, tagged_grid
             )
 
             route.terminal_square = terminal_square
-
-        return routes
 
     def _calculate_route_ratio(self, route: Route) -> float:
         """Calculate the ratio/gradient of a route, hillier routes will have
@@ -204,13 +203,21 @@ class RoutePruner:
             List[Route]: A smaller list of candidate routes
         """
 
+        self.candidates = routes
+
         # Skip ahead if the current list is sufficiently small
         if len(routes) < self.config.max_candidates:
             return routes
 
-        # NOTE: Group routes by terminal grid square, select top N. Sort by
-        #       current elevation loss/gain, and factor in delta back to start
-        #       (express both as a ratio)
+        # Subdivide graph into smaller squares, calculate which square each
+        # route ends in
+        cur_bbox = self._get_bounding_box()
+        tagged_grid = self._generate_grid(cur_bbox)
+        self._tag_routes_with_terminal_grid_square(tagged_grid)
+
+        # Group routes by terminal grid square, select top N. Sort by current
+        # elevation loss/gain, and factor in delta back to start (express both
+        # as a ratio)
         grouped_routes = defaultdict(list)
         for route in routes:
             terminal_square = route.terminal_square
@@ -218,11 +225,12 @@ class RoutePruner:
             route.ratio = route_ratio
             grouped_routes[terminal_square].append(route)
 
-        # TODO: Check that calculation of grid size is correct
-        routes_per_square = self.config.max_candidates // (
-            ((self.config.max_distance * 2) - 1) ** 2
+        # Evenly distribute max candidates between squares
+        routes_per_square = math.ceil(
+            self.config.max_candidates / len(grouped_routes.keys())
         )
 
+        # Take the N most promising routes for each grid square
         pruned_routes = []
         for terminal_square, routes in grouped_routes.items():
             routes = sorted(
@@ -232,4 +240,4 @@ class RoutePruner:
             )
             pruned_routes += routes[:routes_per_square]
 
-        return routes
+        return pruned_routes
