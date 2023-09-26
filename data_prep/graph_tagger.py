@@ -1,7 +1,9 @@
 """Defines the GraphTagger class, which tags each node in the graph with its
 distance from the start point"""
 
-from networkx import Graph
+from functools import reduce
+from networkx import Graph, shortest_path_length
+from networkx.exception import NetworkXNoPath
 from rex_run_planner.containers import RouteConfig, BBox
 from rex_run_planner.data_prep.graph_utils import GraphUtils
 
@@ -113,8 +115,15 @@ class GraphTagger(GraphUtils):
         ), "Start node {start_node} is not in the graph!"
 
         for node_id in self.graph.nodes:
+            try:
+                dist_to_start = shortest_path_length(
+                    self.graph, node_id, start_node, weight="distance"
+                )
+            except NetworkXNoPath:
+                dist_to_start = None
+
             (
-                dist_to_start,
+                _,
                 gain_to_start,
                 loss_to_start,
             ) = self._get_straight_line_distance_and_elevation_change(
@@ -139,7 +148,9 @@ class GraphTagger(GraphUtils):
         nodes_to_remove = set()
         for node_id in self.graph.nodes:
             node_dist = self.graph.nodes[node_id]["dist_to_start"]
-            if node_dist > self.config.max_distance / 2:
+            if node_dist is None:
+                nodes_to_remove.add(node_id)
+            elif node_dist > (self.config.max_distance * 1.1) / 2:
                 nodes_to_remove.add(node_id)
 
         self.graph.remove_nodes_from(nodes_to_remove)

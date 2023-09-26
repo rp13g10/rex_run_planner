@@ -50,6 +50,9 @@ class RouteFinder:
         self.candidates: List[Route] = []
         self.completed_routes: List[Route] = []
 
+        # Debugging
+        self.last_candidates: List[Route] = []
+
     def fetch_node_coords(self, node_id: int) -> Tuple[int, int]:
         """Convenience function, retrieves the latitude and longitude for a
         single node in a graph.
@@ -113,13 +116,35 @@ class RouteFinder:
         """
 
         cur_node = route.route[-1]
+        try:
+            prev_node = route.route[-2]
+        except IndexError:
+            prev_node = None
         visited = route.visited
+        remaining = (self.config.max_distance * 1.1) - route.distance
+        remaining_perc = remaining / (self.config.max_distance * 1.1)
+
+        def check_if_valid(node: int) -> bool:
+            """Only allow nodes which have not yet been visited, wave this
+            during the last 5% of a route to allow returns to the start
+
+            Args:
+                node (int): A possible neighbouring node
+
+            Returns:
+                bool: Whether or not the node can be stepped to
+            """
+            if node not in visited:
+                return True
+            elif remaining_perc <= 0.05:
+                if node == prev_node:
+                    return False
+                return True
+            return False
 
         # Routes are not allowed to re-visit nodes, no running back & forth
         # up a hill!
-        neighbours = filter(
-            lambda node: node not in visited, self.graph.neighbors(cur_node)
-        )
+        neighbours = filter(check_if_valid, self.graph.neighbors(cur_node))
 
         return neighbours
 
@@ -254,7 +279,7 @@ class RouteFinder:
             iter_dist = sum(route.distance for route in self.candidates)
             avg_distance = iter_dist / n_candidates
         else:
-            avg_distance = self.config.max_distance
+            avg_distance = self.config.max_distance * 1.1
 
         pbar.update(1)
         pbar.set_description(
@@ -324,10 +349,17 @@ class RouteFinder:
             # Make sure the total number of routes stays below the configured
             # limit
             new_candidates = self.pruner.prune_routes(new_candidates)
+            self.last_candidates = self.candidates
             self.candidates = new_candidates
 
             # Update the progress bar
             iters += 1
             self._update_progress_bar(pbar)
+
+        self.completed_routes = sorted(
+            self.completed_routes,
+            key=lambda x: x.ratio,
+            reverse=self.config.route_mode == "hilly",
+        )
 
         return self.completed_routes

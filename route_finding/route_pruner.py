@@ -240,4 +240,11 @@ class RoutePruner:
             )
             pruned_routes += routes[:routes_per_square]
 
+        # Final sort spans output from each grid square
+        pruned_routes = sorted(
+            pruned_routes,
+            key=lambda x: x.ratio,
+            reverse=self.config.route_mode == "hilly",
+        )
+
         return pruned_routes

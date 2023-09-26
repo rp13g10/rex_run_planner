@@ -62,6 +62,7 @@ class GraphUtils(ABC):
         # Calculate number of checks required to get elevation every N metres
         dist_change_m = dist_change.meters
         no_checks = math.ceil(dist_change_m / self.config.elevation_interval)
+        no_checks = max(2, no_checks)
 
         # Generate latitudes & longitudes for each checkpoint
         lat_checkpoints = list(np.linspace(start_lat, end_lat, no_checks))
