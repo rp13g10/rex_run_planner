@@ -1,7 +1,6 @@
 """Defines the GraphTagger class, which tags each node in the graph with its
 distance from the start point"""
 
-from functools import reduce
 from networkx import Graph, shortest_path_length
 from networkx.exception import NetworkXNoPath
 from rex_run_planner.containers import RouteConfig, BBox

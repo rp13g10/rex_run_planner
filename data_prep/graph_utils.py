@@ -65,8 +65,12 @@ class GraphUtils(ABC):
         no_checks = max(2, no_checks)
 
         # Generate latitudes & longitudes for each checkpoint
-        lat_checkpoints = list(np.linspace(start_lat, end_lat, no_checks))
-        lon_checkpoints = list(np.linspace(start_lon, end_lon, no_checks))
+        lat_checkpoints = list(
+            np.linspace(start_lat, end_lat, num=no_checks, endpoint=True)
+        )
+        lon_checkpoints = list(
+            np.linspace(start_lon, end_lon, num=no_checks, endpoint=True)
+        )
 
         return lat_checkpoints, lon_checkpoints, dist_change
 
@@ -145,9 +149,9 @@ class GraphUtils(ABC):
 
         # Retrieve distance in the desired form
         if self.config.dist_mode == "metric":
-            dist_change = dist_change.kilometers
+            dist_change = float(dist_change.km)
         else:
-            dist_change = dist_change.miles
+            dist_change = float(dist_change.miles)
 
         return dist_change, elevation_gain, elevation_loss
 

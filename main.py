@@ -19,7 +19,7 @@ from rex_run_planner.route_plotting import (
 
 # TODO: Parameterise 10% variation in max distance, remove all hard-coded
 #       values
-
+# TODO: Set up quick experiment to determine optimal no. candidates
 # TODO: Build out unit tests for all code created so far
 # TODO: Start building this out into a webapp once plots working properly
 
@@ -27,7 +27,7 @@ config = RouteConfig(
     start_lat=50.969540,
     start_lon=-1.383318,
     max_distance=10,
-    route_mode="hilly",
+    route_mode="flat",
     dist_mode="metric",
     elevation_interval=10,
     max_candidates=16000,
@@ -48,18 +48,18 @@ except FileNotFoundError:
 
 finder = RouteFinder(graph=graph, config=config)
 routes = finder.find_routes()
-cands = finder.last_candidates
+# cands = finder.last_candidates
 
 del graph
 with open("./data/hampshire-latest-full.nx", "rb") as fobj:
     graph = pickle.load(fobj)
 
-for route in cands[:10]:
-    plot = plot_route(graph, route)
-    fname = generate_filename(route)
-    plot.write_html(f"./plots/cand_{fname}.html")
+# for route in cands[:10]:
+#     plot = plot_route(graph, route)
+#     fname = generate_filename(route)
+#     plot.write_html(f"./plots/cand_{fname}.html")
 
-selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.75)
+selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.85)
 selected_routes = selector.select_routes()
 
 
