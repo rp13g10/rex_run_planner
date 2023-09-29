@@ -129,8 +129,6 @@ class RoutePruner:
 
         excluded_lats = set()
         for (lat_inx, lon_inx), bbox in tagged_grid.items():
-            if lat_inx == 17 and terminal_node == 1096242:
-                _ = None
             # Find the correct column
             if lat_inx in excluded_lats:
                 continue

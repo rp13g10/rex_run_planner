@@ -9,6 +9,7 @@ sys.path.append("/mnt/c/rpiper/repos")
 # ruff: noqa: E402
 import pickle
 from rex_run_planner.data_prep import GraphEnricher
+from rex_run_planner.data_prep.graph_splitter import GraphSplitter
 from rex_run_planner.route_finding import RouteFinder
 from rex_run_planner.containers import RouteConfig
 from rex_run_planner.route_plotting import (
@@ -34,36 +35,48 @@ config = RouteConfig(
     max_condense_passes=5,
 )
 
-try:
-    with open("./data/hampshire-latest-cond.nx", "rb") as fobj:
-        graph = pickle.load(fobj)
-except FileNotFoundError:
-    enricher = GraphEnricher("./data/hampshire-latest.json", config)
-    enricher.enrich_graph(
-        full_target_loc="./data/hampshire-latest-full.nx",
-        cond_target_loc="./data/hampshire-latest-cond.nx",
-    )
-    graph = enricher.graph
-    del enricher
+enricher = GraphEnricher("./data/hampshire-latest.json", config)
 
-finder = RouteFinder(graph=graph, config=config)
-routes = finder.find_routes()
-# cands = finder.last_candidates
+graph = enricher.graph
+splitter = GraphSplitter(graph)
+splitter.explode_graph()
 
-del graph
-with open("./data/hampshire-latest-full.nx", "rb") as fobj:
-    graph = pickle.load(fobj)
+enricher.enrich_graph(
+    # full_target_loc="./data/hampshire-latest-full.nx",
+    # cond_target_loc="./data/hampshire-latest-cond.nx",
+)
 
-# for route in cands[:10]:
+
+# try:
+#     with open("./data/hampshire-latest-cond.nx", "rb") as fobj:
+#         graph = pickle.load(fobj)
+# except FileNotFoundError:
+#     enricher = GraphEnricher("./data/hampshire-latest.json", config)
+#     enricher.enrich_graph(
+#         full_target_loc="./data/hampshire-latest-full.nx",
+#         cond_target_loc="./data/hampshire-latest-cond.nx",
+#     )
+#     graph = enricher.graph
+#     del enricher
+
+# finder = RouteFinder(graph=graph, config=config)
+# routes = finder.find_routes()
+# # cands = finder.last_candidates
+
+# del graph
+# with open("./data/hampshire-latest-full.nx", "rb") as fobj:
+#     graph = pickle.load(fobj)
+
+# # for route in cands[:10]:
+# #     plot = plot_route(graph, route)
+# #     fname = generate_filename(route)
+# #     plot.write_html(f"./plots/cand_{fname}.html")
+
+# selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.85)
+# selected_routes = selector.select_routes()
+
+
+# for route in selected_routes[:10]:
 #     plot = plot_route(graph, route)
 #     fname = generate_filename(route)
-#     plot.write_html(f"./plots/cand_{fname}.html")
-
-selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.85)
-selected_routes = selector.select_routes()
-
-
-for route in selected_routes[:10]:
-    plot = plot_route(graph, route)
-    fname = generate_filename(route)
-    plot.write_html(f"./plots/{fname}.html")
+#     plot.write_html(f"./plots/{fname}.html")
