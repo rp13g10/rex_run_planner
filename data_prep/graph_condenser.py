@@ -1,29 +1,17 @@
 """Contains the GraphEnricher class, which will be executed if this script
 is executed directly."""
 
-import json
-import pickle
 from itertools import repeat
-from multiprocessing.pool import Pool
-from typing import List, Tuple, Union, Set
+from typing import List, Set, Tuple, Union
 
 import networkx as nx
 from networkx import Graph
+from networkx.exception import NetworkXError
 from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
-from networkx.exception import NetworkXError
-from networkx.readwrite import json_graph
 
-from rex_run_planner.containers import RouteConfig, ChainMetrics
-from rex_run_planner.data_prep.lidar import get_elevation
-from rex_run_planner.data_prep.graph_utils import GraphUtils
+from rex_run_planner.containers import ChainMetrics
 from rex_run_planner.data_prep.graph_splitter import GraphSplitter
-
-# TODO: Implement parallel processing for condensing of enriched graphs.
-#       Subdivide graph into grid, distribute condensing of each subgraph
-#       then stitch the results back together. Final pass will be required to
-#       process any edges which were temporarily removed as they bridged
-#       multiple subgraphs.
 
 
 class GraphCondenser:
@@ -235,7 +223,7 @@ class GraphCondenser:
 
         Args:
             _iter (int, optional): The number of times this function has been
-              called. Defaults to False.
+              called. Defaults to 0.
         """
         self._remove_isolates()
         self._refresh_node_lists()
@@ -274,6 +262,17 @@ class GraphCondenser:
 
 
 def _condense_subgraph(subgraph: Graph, edge_nodes: Set[int]) -> Graph:
+    """Condense a single subgraph and return it
+
+    Args:
+        subgraph (Graph): The subgraph to be condensed
+        edge_nodes (Set[int]): A set of nodes which are at the very edge of
+          the subgraph. These will be excluded from any checks for dead-end
+          edges as they may continue into adjacent grid squares.
+
+    Returns:
+        Graph: A condensed representation of the provided graph
+    """
     condenser = GraphCondenser(subgraph, edge_nodes)
     condenser.condense_graph()
 
@@ -281,19 +280,32 @@ def _condense_subgraph(subgraph: Graph, edge_nodes: Set[int]) -> Graph:
 
 
 def _condense_subgraph_star(args):
+    """Wrapper function, allows use of _condense_subgraph with process_map
+    by expanding out all provided arguments"""
     return _condense_subgraph(*args)
 
 
 def condense_graph(graph: Graph) -> Graph:
+    """For a given graph, minimise its size in-memory by removing any nodes
+    which do not correspond to a junction. Paths/roads will be represented by
+    a single edge, rather than a chain of edges. The intermediate nodes
+    traversed by each edge will instead be recorded in the 'via' attribute
+    of each new edge.
+
+    Args:
+        graph (Graph): The graph to be condensed
+
+    Returns:
+        Graph: A condensed version of the input graph
+    """
+
+    # Split the graph across a grid
     splitter = GraphSplitter(graph)
     splitter.explode_graph()
     cb_nodes = splitter.edge_nodes
 
-    map_args = tqdm(
-        zip(splitter.subgraphs.values(), repeat(cb_nodes)),
-        total=len(splitter.subgraphs.keys()),
-        desc="Condensing subgraphs",
-    )
+    # Condense each grid separately
+    map_args = zip(splitter.subgraphs.values(), repeat(cb_nodes))
     new_subgraphs = process_map(
         _condense_subgraph_star,
         map_args,
@@ -301,15 +313,16 @@ def condense_graph(graph: Graph) -> Graph:
         tqdm_class=tqdm,
         total=len(splitter.grid),
     )
-    # with Pool() as mp_pool:
-    #     new_subgraphs = mp_pool.starmap(_condense_subgraph, map_args)
 
+    # Re-combine the condensed subgraphs
     for new_subgraph in new_subgraphs:
         sample_node = list(new_subgraph.nodes)[0]
         subgraph_id = new_subgraph.nodes[sample_node]["grid_square"]
         splitter.subgraphs[subgraph_id] = new_subgraph
-
     splitter.rebuild_graph()
+
+    # Perform a mop-up to pick up any edges which spanned more than one
+    # subgraph
     graph = _condense_subgraph(splitter.graph, set())
 
     return graph

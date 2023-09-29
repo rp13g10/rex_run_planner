@@ -6,10 +6,10 @@ import sys
 
 sys.path.append("/mnt/c/rpiper/repos")
 
+# pylint: disable=wrong-import-position
 # ruff: noqa: E402
 import pickle
 from rex_run_planner.data_prep import GraphEnricher
-from rex_run_planner.data_prep.graph_splitter import GraphSplitter
 from rex_run_planner.route_finding import RouteFinder
 from rex_run_planner.containers import RouteConfig
 from rex_run_planner.route_plotting import (
@@ -23,60 +23,43 @@ from rex_run_planner.route_plotting import (
 # TODO: Set up quick experiment to determine optimal no. candidates
 # TODO: Build out unit tests for all code created so far
 # TODO: Start building this out into a webapp once plots working properly
+# TODO: Check handling of max_condense_passes, should be possible to remove
 
 config = RouteConfig(
     start_lat=50.969540,
     start_lon=-1.383318,
     max_distance=10,
-    route_mode="flat",
+    route_mode="hilly",
     dist_mode="metric",
     elevation_interval=10,
     max_candidates=16000,
     max_condense_passes=5,
 )
 
-enricher = GraphEnricher("./data/hampshire-latest.json", config)
+try:
+    with open("./data/hampshire-latest-cond.nx", "rb") as fobj:
+        graph = pickle.load(fobj)
+except FileNotFoundError:
+    enricher = GraphEnricher("./data/hampshire-latest.json", config)
+    enricher.enrich_graph(
+        full_target_loc="./data/hampshire-latest-full.nx",
+        cond_target_loc="./data/hampshire-latest-cond.nx",
+    )
+    graph = enricher.graph
+    del enricher
 
-graph = enricher.graph
-splitter = GraphSplitter(graph)
-splitter.explode_graph()
+finder = RouteFinder(graph=graph, config=config)
+routes = finder.find_routes()
 
-enricher.enrich_graph(
-    # full_target_loc="./data/hampshire-latest-full.nx",
-    # cond_target_loc="./data/hampshire-latest-cond.nx",
-)
+del graph
+with open("./data/hampshire-latest-full.nx", "rb") as fobj:
+    graph = pickle.load(fobj)
 
-
-# try:
-#     with open("./data/hampshire-latest-cond.nx", "rb") as fobj:
-#         graph = pickle.load(fobj)
-# except FileNotFoundError:
-#     enricher = GraphEnricher("./data/hampshire-latest.json", config)
-#     enricher.enrich_graph(
-#         full_target_loc="./data/hampshire-latest-full.nx",
-#         cond_target_loc="./data/hampshire-latest-cond.nx",
-#     )
-#     graph = enricher.graph
-#     del enricher
-
-# finder = RouteFinder(graph=graph, config=config)
-# routes = finder.find_routes()
-# # cands = finder.last_candidates
-
-# del graph
-# with open("./data/hampshire-latest-full.nx", "rb") as fobj:
-#     graph = pickle.load(fobj)
-
-# # for route in cands[:10]:
-# #     plot = plot_route(graph, route)
-# #     fname = generate_filename(route)
-# #     plot.write_html(f"./plots/cand_{fname}.html")
-
-# selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.85)
-# selected_routes = selector.select_routes()
+selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.85)
+selected_routes = selector.select_routes()
 
 
-# for route in selected_routes[:10]:
-#     plot = plot_route(graph, route)
-#     fname = generate_filename(route)
-#     plot.write_html(f"./plots/{fname}.html")
+for route in selected_routes[:10]:
+    plot = plot_route(graph, route)
+    fname = generate_filename(route)
+    plot.write_html(f"./plots/{fname}.html")
