@@ -63,8 +63,8 @@ class GraphCondenser:
         self.cb_nodes = cb_nodes
 
         # Create container objects
-        self.nodes_to_condense = []
-        self.nodes_to_remove = []
+        self.nodes_to_condense = set()
+        self.nodes_to_remove = set()
 
     def _remove_isolates(self):
         """Remove any nodes from the graph which are not connected to another
@@ -77,15 +77,19 @@ class GraphCondenser:
         them representing a dead end."""
         self.graph.remove_nodes_from(self.nodes_to_remove)
 
+    def _get_node_degree(self, node_id) -> int:
+        edges = self.graph.edges(node_id)
+        node_degree = len(edges)
+        return node_degree
+
     def _refresh_node_lists(self):
         """Check the graph for any nodes which can be condensed, or removed
         entirely."""
-        self.nodes_to_condense = []
-        self.nodes_to_remove = []
+        self.nodes_to_condense = set()
+        self.nodes_to_remove = set()
 
         for node_id in self.graph.nodes:
-            edges = self.graph.edges(node_id)
-            node_degree = len(edges)
+            node_degree = self._get_node_degree(node_id)
 
             if node_degree >= 3:
                 # Node is a junction, must be retained
@@ -95,12 +99,30 @@ class GraphCondenser:
             elif node_degree == 2:
                 # Node represents a bend in a straight line, can safely be
                 # condensed
-                self.nodes_to_condense.append(node_id)
+                self.nodes_to_condense.add(node_id)
             elif node_degree == 1:
                 # Node is a dead end, can safely be removed
-                self.nodes_to_remove.append(node_id)
+                self.nodes_to_remove.add(node_id)
             # Node is an orphan, will be caught by remove_isolates
             continue
+
+    def _update_node_lists(self, applied_chain: List[int]):
+        start_id = applied_chain[0]
+        # removed_id = applied_chain[1]
+        end_id = applied_chain[2]
+
+        # self.nodes_to_condense.remove(removed_id)
+
+        end_degree = self._get_node_degree(end_id)
+
+        if start_id in self.nodes_to_condense:
+            start_degree = self._get_node_degree(start_id)
+            if start_degree != 2:
+                self.nodes_to_condense.remove(start_id)
+        if end_id in self.nodes_to_condense:
+            end_degree = self._get_node_degree(end_id)
+            if end_degree != 2:
+                self.nodes_to_condense.remove(end_id)
 
     def _generate_node_chain(
         self, node_id: int
@@ -236,11 +258,16 @@ class GraphCondenser:
 
             self._remove_original_edges(node_edges)
 
-            self._refresh_node_lists()
+            # TODO: Update node lists based on knowledge of last node
+            #       processed, rather than redoing the entire thing
+            # self._refresh_node_lists()
+            self._update_node_lists(node_chain)
 
             iters += 1
 
-        self._remove_dead_ends()
+        if not self.cb_nodes:
+            # Dead end on a subgraph might not actually be a dead end
+            self._remove_dead_ends()
 
         if _iter < self.max_condense_passes:
             self.condense_graph(_iter=_iter + 1)
@@ -258,11 +285,9 @@ def _condense_subgraph_star(args):
 
 
 def condense_graph(graph: Graph) -> Graph:
-    assert len(graph.nodes) > 0, "Empty graph provided!"
     splitter = GraphSplitter(graph)
     splitter.explode_graph()
     cb_nodes = splitter.edge_nodes
-    assert len(cb_nodes) > 1, "No subgraphs were created!"
 
     map_args = tqdm(
         zip(splitter.subgraphs.values(), repeat(cb_nodes)),

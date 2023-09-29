@@ -21,6 +21,7 @@ class GraphSplitter:
             self.no_subgraphs = no_cpus
         else:
             self.no_subgraphs = math.ceil(len(self.graph.nodes) / 10000)
+        # self.no_subgraphs = 1
 
         self.grid_size = math.ceil(math.sqrt(self.no_subgraphs))
         self.grid = {}
