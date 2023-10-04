@@ -9,7 +9,7 @@ sys.path.append("/mnt/c/rpiper/repos")
 # pylint: disable=wrong-import-position
 # ruff: noqa: E402
 import pickle
-from rex_run_planner.data_prep import GraphEnricher
+from rex_run_planner.data_prep.graph_enricher import GraphEnricher
 from rex_run_planner.route_finding import RouteFinder
 from rex_run_planner.containers import RouteConfig
 from rex_run_planner.route_plotting import (

@@ -1,23 +1,19 @@
-"""Contains the GraphEnricher class, which will be executed if this script
-is executed directly."""
+"""Contains the GraphEnricher class, used to add additional data points
+to the provided OSM graph."""
 
 import json
 import pickle
-from itertools import repeat
-from multiprocessing.pool import Pool
-from typing import List, Tuple, Union, Optional
+from typing import Optional
 
-import networkx as nx
 from tqdm import tqdm
 from networkx import Graph
-from networkx.exception import NetworkXError
 from networkx.readwrite import json_graph
 
-from rex_run_planner.containers import RouteConfig, ChainMetrics
+from rex_run_planner.containers import RouteConfig
 from rex_run_planner.data_prep.lidar import get_elevation
 from rex_run_planner.data_prep.graph_utils import GraphUtils
-from rex_run_planner.data_prep.graph_splitter import GraphSplitter
-from rex_run_planner.data_prep.graph_condenser import condense_graph
+from rex_run_planner.data_prep.graph_enricher.condenser import condense_graph
+from rex_run_planner.data_prep.graph_enricher.tagger import tag_graph
 
 # TODO: Implement parallel processing for condensing of enriched graphs.
 #       Subdivide graph into grid, distribute condensing of each subgraph
@@ -76,10 +72,6 @@ class GraphEnricher(GraphUtils):
         # Store down core attributes
         super().__init__(graph, config)
 
-        # Create container objects
-        self.nodes_to_condense = []
-        self.nodes_to_remove = []
-
     def load_graph(self, source_path: str) -> Graph:
         """Read in the contents of the JSON file specified by `source_path`
         to a networkx graph.
@@ -102,66 +94,6 @@ class GraphEnricher(GraphUtils):
 
         return graph
 
-    def _enrich_source_nodes(self):
-        """For each node in the graph, attempt to fetch elevation info from
-        the loaded LIDAR data. If no elevation information is available, the
-        node will be dropped to minimise memory usage."""
-
-        to_delete = set()
-        for inx, attrs in tqdm(
-            self.graph.nodes.items(), desc="Enriching Nodes", leave=False
-        ):
-            # Unpack coordinates
-            lat = attrs["lat"]
-            lon = attrs["lon"]
-
-            # Fetch elevation
-            try:
-                elevation = get_elevation(lat, lon)
-            except FileNotFoundError:
-                elevation = None
-
-            if not elevation:
-                # Mark node for deletion
-                to_delete.add(inx)
-            else:
-                # Add elevation to node
-                self.graph.nodes[inx]["elevation"] = elevation
-
-        # Remove nodes with no elevation data
-        self.graph.remove_nodes_from(to_delete)
-
-    def _enrich_source_edges(self):
-        """For each edge in the graph, estimate the distance, elevation gain
-        and elevation loss when traversing it. Strip out all other metadata
-        to minimise the memory footprint of the graph.
-        """
-
-        # Calculate elevation change & distance for each edge
-        for start_id, end_id, data in tqdm(
-            self.graph.edges(data=True), desc="Enriching Edges", leave=True
-        ):
-            (
-                dist_change,
-                elevation_gain,
-                elevation_loss,
-            ) = self._estimate_distance_and_elevation_change(start_id, end_id)
-
-            data["distance"] = dist_change
-            data["elevation_gain"] = elevation_gain
-            data["elevation_loss"] = elevation_loss
-            data["via"] = []
-
-            # Clear out any other attributes which aren't needed
-            to_remove = [
-                attr
-                for attr in data
-                if attr
-                not in {"distance", "elevation_gain", "elevation_loss", "via"}
-            ]
-            for attr in to_remove:
-                del data[attr]
-
     def enrich_graph(
         self,
         full_target_loc: Optional[str] = None,
@@ -179,8 +111,8 @@ class GraphEnricher(GraphUtils):
             cond_target_loc (Optional[str]): The loation which the condensed
               graph should be saved to. Defaults to None.
         """
-        self._enrich_source_nodes()
-        self._enrich_source_edges()
+
+        self.graph = tag_graph(self.graph, self.config)
 
         if full_target_loc:
             self.save_graph(full_target_loc)

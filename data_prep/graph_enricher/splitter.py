@@ -3,7 +3,7 @@ regeneration of the initial graph after processing."""
 import math
 import os
 from collections import defaultdict
-from typing import Dict, Set, Tuple
+from typing import Dict, Set, Tuple, Optional
 
 import numpy as np
 from networkx import Graph, compose
@@ -16,7 +16,7 @@ class GraphSplitter:
     lat/lon, and recreate the original graph from these subgraphs. Useful
     if you want to perform parallel processing."""
 
-    def __init__(self, graph: Graph):
+    def __init__(self, graph: Graph, no_subgraphs: Optional[int] = None):
         """Create a new GraphSplitter instance for the provided graph
 
         Args:
@@ -29,10 +29,13 @@ class GraphSplitter:
         self.subgraphs = {}
         self.cross_boundary_edges = {}
 
-        # Set subgraph size according to core count, this may need to be
-        # adjusted for very large graphs if memory usage proves too high
-        if no_cpus := os.cpu_count():
+        # Take user provided subgraph count if available
+        if no_subgraphs:
+            self.no_subgraphs = no_subgraphs
+        # Set according to CPU count if not
+        elif no_cpus := os.cpu_count():
             self.no_subgraphs = no_cpus
+        # Fall back on 10k nodes per subgraph if CPU count not available
         else:
             self.no_subgraphs = math.ceil(len(self.graph.nodes) / 10000)
         self.grid_size = math.ceil(math.sqrt(self.no_subgraphs))
@@ -247,6 +250,7 @@ class GraphSplitter:
         # Split the graph into subgraphs
         for grid_square, nodes in self.subgraph_nodes.items():
             subgraph = self.graph.subgraph(nodes).copy()
+            subgraph.graph["grid_square"] = grid_square
             self.subgraphs[grid_square] = subgraph
 
         # Delete the original graph to free up memory

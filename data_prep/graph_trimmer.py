@@ -1,4 +1,4 @@
-"""Defines the GraphTagger class, which tags each node in the graph with its
+"""Defines the GraphTrimmer class, which tags each node in the graph with its
 distance from the start point"""
 
 from networkx import Graph, shortest_path_length
@@ -10,8 +10,8 @@ from rex_run_planner.data_prep.graph_utils import GraphUtils
 #       straight line distance, may save some wasted compute
 
 
-class GraphTagger(GraphUtils):
-    """Before creating a set of new routes, use the GraphTagger class to
+class GraphTrimmer(GraphUtils):
+    """Before creating a set of new routes, use the GraphTrimmer class to
     pre-calculate the distance of each node to the start point. This
     information can then be used to reduce the size of the graph, minimising
     its memory footprint."""

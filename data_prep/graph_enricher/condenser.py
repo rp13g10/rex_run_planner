@@ -11,7 +11,9 @@ from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 
 from rex_run_planner.containers import ChainMetrics
-from rex_run_planner.data_prep.graph_splitter import GraphSplitter
+from rex_run_planner.data_prep.graph_enricher.splitter import (
+    GraphSplitter,
+)
 
 
 class GraphCondenser:
@@ -300,7 +302,7 @@ def condense_graph(graph: Graph) -> Graph:
     """
 
     # Split the graph across a grid
-    splitter = GraphSplitter(graph)
+    splitter = GraphSplitter(graph, no_subgraphs=100)
     splitter.explode_graph()
     cb_nodes = splitter.edge_nodes
 
@@ -312,12 +314,12 @@ def condense_graph(graph: Graph) -> Graph:
         desc="Condensing subgraphs",
         tqdm_class=tqdm,
         total=len(splitter.grid),
+        max_workers=4,
     )
 
     # Re-combine the condensed subgraphs
     for new_subgraph in new_subgraphs:
-        sample_node = list(new_subgraph.nodes)[0]
-        subgraph_id = new_subgraph.nodes[sample_node]["grid_square"]
+        subgraph_id = new_subgraph.graph["grid_square"]
         splitter.subgraphs[subgraph_id] = new_subgraph
     splitter.rebuild_graph()
 

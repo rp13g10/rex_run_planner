@@ -1,2 +1,1 @@
 from rex_run_planner.data_prep.graph_enricher import GraphEnricher
-from rex_run_planner.data_prep.graph_tagger import GraphTagger

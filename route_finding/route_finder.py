@@ -5,7 +5,7 @@ from networkx import Graph
 import tqdm
 
 from rex_run_planner.containers import Route, RouteConfig, StepMetrics
-from rex_run_planner.data_prep.graph_tagger import GraphTagger
+from rex_run_planner.data_prep.graph_trimmer import GraphTrimmer
 from rex_run_planner.route_finding.route_pruner import RoutePruner
 from rex_run_planner.route_finding.utilities import find_nearest_node
 
@@ -37,7 +37,7 @@ class RouteFinder:
         self.graph = graph
         self.config = config
 
-        self.tagger = GraphTagger(
+        self.trimmer = GraphTrimmer(
             graph,
             config,
         )
@@ -302,9 +302,9 @@ class RouteFinder:
 
         # Trim down the internal graph to a circle of radius max distance / 2
         start_node = self.candidates[0].route[0]
-        self.graph = self.tagger.generate_coarse_subgraph(start_node)
-        self.graph = self.tagger.tag_distances_to_start(start_node)
-        self.graph = self.tagger.generate_fine_subgraph()
+        self.graph = self.trimmer.generate_coarse_subgraph(start_node)
+        self.graph = self.trimmer.tag_distances_to_start(start_node)
+        self.graph = self.trimmer.generate_fine_subgraph()
 
         # Recursively check for circular routes
         pbar = tqdm.tqdm()
