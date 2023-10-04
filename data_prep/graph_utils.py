@@ -16,8 +16,8 @@ from rex_run_planner.data_prep.lidar import get_elevation
 
 
 class GraphUtils(ABC):
-    """Contains utility functions which are to be shared across both the
-    GraphEnricher and GraphTagger classes.
+    """Contains utility functions which are to be shared across various
+    subclasses which are used to enrich the source OSM data.
     """
 
     def __init__(self, graph: Graph, config: RouteConfig):
