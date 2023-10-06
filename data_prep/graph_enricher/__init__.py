@@ -9,8 +9,10 @@ from tqdm import tqdm
 from networkx import Graph
 from networkx.readwrite import json_graph
 
+from relevation.lidar import get_elevation
+
 from rex_run_planner.containers import RouteConfig
-from rex_run_planner.data_prep.lidar import get_elevation
+# from rex_run_planner.data_prep.lidar import get_elevation
 from rex_run_planner.data_prep.graph_utils import GraphUtils
 from rex_run_planner.data_prep.graph_enricher.condenser import condense_graph
 from rex_run_planner.data_prep.graph_enricher.tagger import tag_graph

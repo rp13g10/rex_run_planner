@@ -7,8 +7,11 @@ from tqdm import tqdm
 from tqdm.contrib.concurrent import process_map
 from networkx import Graph
 
+from relevation.lidar import get_elevation
+
 from rex_run_planner.containers import RouteConfig
-from rex_run_planner.data_prep.lidar import get_elevation
+
+# from rex_run_planner.data_prep.lidar import get_elevation
 from rex_run_planner.data_prep.graph_utils import GraphUtils
 from rex_run_planner.data_prep.graph_enricher.splitter import GraphSplitter
 
@@ -54,11 +57,19 @@ class GraphTagger(GraphUtils):
         the loaded LIDAR data. If no elevation information is available, the
         node will be dropped to minimise memory usage."""
 
+        sorted_nodes = sorted(
+            sorted(
+                self.graph.nodes.items(),
+                key=lambda item: item[1]["lat"],
+            ),
+            key=lambda item: item[1]["lon"],
+        )
+
         to_delete = set()
-        for inx, attrs in self.graph.nodes.items():
+        for node_id, node_attrs in sorted_nodes:
             # Unpack coordinates
-            lat = attrs["lat"]
-            lon = attrs["lon"]
+            lat = node_attrs["lat"]
+            lon = node_attrs["lon"]
 
             # Fetch elevation
             try:
@@ -68,10 +79,10 @@ class GraphTagger(GraphUtils):
 
             if not elevation:
                 # Mark node for deletion
-                to_delete.add(inx)
+                to_delete.add(node_id)
             else:
                 # Add elevation to node
-                self.graph.nodes[inx]["elevation"] = elevation
+                self.graph.nodes[node_id]["elevation"] = elevation
 
         # Remove nodes with no elevation data
         self.graph.remove_nodes_from(to_delete)
@@ -82,8 +93,16 @@ class GraphTagger(GraphUtils):
         to minimise the memory footprint of the graph.
         """
 
+        sorted_edges = sorted(
+            sorted(
+                self.graph.edges(data=True),
+                key=lambda edge: self.fetch_node_coords(edge[0])[0],
+            ),
+            key=lambda edge: self.fetch_node_coords(edge[0])[0],
+        )
+
         # Calculate elevation change & distance for each edge
-        for start_id, end_id, data in self.graph.edges(data=True):
+        for start_id, end_id, data in sorted_edges:
             if "distance" in data:
                 continue
 
@@ -140,7 +159,7 @@ def _tag_subgraph_star(args):
 
 def tag_graph(graph: Graph, config: RouteConfig):
     # Split the graph across a grid
-    splitter = GraphSplitter(graph, no_subgraphs=100)
+    splitter = GraphSplitter(graph, no_subgraphs=1000)
     splitter.explode_graph()
 
     # Process each grid separately
@@ -153,20 +172,13 @@ def tag_graph(graph: Graph, config: RouteConfig):
         desc="Enriching subgraphs",
         tqdm_class=tqdm,
         total=len(splitter.grid),
-        max_workers=4,
+        # max_workers=8,
     )
 
     # Re-combine the tagged subgraphs
     # populated_squares = set()
     for new_subgraph in new_subgraphs:
         subgraph_id = new_subgraph.graph["grid_square"]
-        # try:
-        #     sample_node = list(new_subgraph.nodes)[0]
-        # except IndexError:
-        #     # Empty graph, no LIDAR coverage for this grid square
-        #     continue
-        # subgraph_id = new_subgraph.nodes[sample_node]["grid_square"]
-        # populated_squares.add(subgraph_id)
         splitter.subgraphs[subgraph_id] = new_subgraph
 
     # Clear out any grid squares not preset in the output

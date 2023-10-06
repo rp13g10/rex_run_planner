@@ -302,7 +302,7 @@ def condense_graph(graph: Graph) -> Graph:
     """
 
     # Split the graph across a grid
-    splitter = GraphSplitter(graph, no_subgraphs=100)
+    splitter = GraphSplitter(graph, no_subgraphs=1000)
     splitter.explode_graph()
     cb_nodes = splitter.edge_nodes
 
@@ -314,7 +314,7 @@ def condense_graph(graph: Graph) -> Graph:
         desc="Condensing subgraphs",
         tqdm_class=tqdm,
         total=len(splitter.grid),
-        max_workers=4,
+        # max_workers=8,
     )
 
     # Re-combine the condensed subgraphs

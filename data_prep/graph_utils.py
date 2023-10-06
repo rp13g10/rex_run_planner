@@ -10,7 +10,8 @@ from geopy.distance import distance
 from networkx import Graph
 
 from rex_run_planner.containers import RouteConfig
-from rex_run_planner.data_prep.lidar import get_elevation
+# from rex_run_planner.data_prep.lidar import get_elevation
+from relevation.lidar import get_elevation
 
 # TODO: Implement parallel processing for condensing of enriched graphs.
 
