@@ -4,3 +4,5 @@ tools/*
 *.pyc
 plots/*
 *__pycache__*
+.eggs*
+*.egg-info

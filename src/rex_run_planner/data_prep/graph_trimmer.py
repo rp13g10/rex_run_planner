@@ -36,7 +36,8 @@ class GraphTrimmer(GraphUtils):
               calculation. Defaults to 10.
         """
 
-        super().__init__(graph, config)
+        self.graph = graph
+        self.config = config
 
     def _check_if_node_is_in_target_area(
         self, node_id: int, bbox: BBox
@@ -75,10 +76,10 @@ class GraphTrimmer(GraphUtils):
         start_lon = self.graph.nodes[start_node]["lon"]
 
         max_dist = self.config.max_distance
-        dist_mode = self.config.dist_mode
+
 
         # NOTE: 1 degree ~ 69mi/111km
-        factor = 111 if dist_mode == "metric" else 69
+        factor = 111
 
         # 5% safety net as this is a very crude estimate
         delta = (max_dist / 2) / (factor * 1.05)

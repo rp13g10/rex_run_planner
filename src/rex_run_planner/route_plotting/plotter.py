@@ -26,14 +26,28 @@ def plot_route(graph: Graph, route: Route) -> go.Figure:
     Returns:
         go.Figure: A mapbox plot of the provided route
     """
-    lats, lons = [], []
+    lats, lons, eles = [], [], []
     for node_id in route.route:
         lat = graph.nodes[node_id]["lat"]
         lon = graph.nodes[node_id]["lon"]
+        elevation = graph.nodes[node_id]["elevation"]
         lats.append(lat)
         lons.append(lon)
+        eles.append(elevation)
 
-    trace = go.Scattermapbox(mode="lines", lat=lats, lon=lons)
+    trace = go.Scattermapbox(
+        mode="markers+lines",
+        lat=lats,
+        lon=lons,
+        marker=dict(
+            color=eles,
+            colorscale="turbo",
+            colorbar=dict(
+                title="Elevation (m)"
+            ),
+            size=10
+        )
+    )
 
     distance = route.distance
     elevation = route.elevation_gain
@@ -42,7 +56,7 @@ def plot_route(graph: Graph, route: Route) -> go.Figure:
     layout = go.Layout(
         # margin={"l": 0, "t": 0, "r": 0, "l": 0},
         mapbox={"center": {"lon": lons[0], "lat": lats[0]}},
-        mapbox_style="stamen-terrain",
+        mapbox_style="open-street-map",
         mapbox_zoom=10,
         title=title,
     )

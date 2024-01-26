@@ -19,12 +19,12 @@ def find_nearest_node(graph, lat, lon):
         node_lat = attrs["lat"]
         node_lon = attrs["lon"]
 
-        close_lat = math.isclose(lat, node_lat, abs_tol=0.0005)
+        close_lat = math.isclose(lat, node_lat, abs_tol=0.001)
 
         if not close_lat:
             continue
 
-        close_lon = math.isclose(lon, node_lon, abs_tol=0.0005)
+        close_lon = math.isclose(lon, node_lon, abs_tol=0.001)
 
         if not close_lon:
             continue

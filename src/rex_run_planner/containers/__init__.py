@@ -68,28 +68,16 @@ class RouteConfig:
         max_distance (float): Max distance for the route
         route_mode (str): Set to 'hilly' to generate the hilliest possible
           route, or 'flat' for the flattest possible route
-        dist_mode (str): Whether to calculate distances in 'metric' or
-          'imperial'
-        elevation_interval (int): When estimating elevation gain between
-          points, this determines how frequently the elevation should be
-          sampled. Lower values will give more accurate elevation gain/loss
-          metrics, higher values will result in faster script execution.
         max_candidates (int): The maximum number of candidate routes which
           should be held in memory. Lower this to increase calculation speed,
           increase it to potentially increase the quality of routes generated.
-        max_condense_passes (int): Determines how many times the internal map
-          should be processed to minimise its size. Decreasing this may improve
-          processing times, but the benefit is likely to be negligible.
     """
 
     start_lat: float
     start_lon: float
     max_distance: float
     route_mode: str
-    dist_mode: str
-    elevation_interval: int = 10
     max_candidates: int = 32000
-    max_condense_passes: int = 5
 
 
 @dataclass

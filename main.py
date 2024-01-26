@@ -1,17 +1,14 @@
 """In the absence of a web frontend, this script is used to trigger library
 calls and generate/plot routes"""
 
-# TODO: Fix this properly
-import sys
+import os
+import pickle
 
-sys.path.append("/mnt/c/rpiper/repos")
 
 # pylint: disable=wrong-import-position
 # ruff: noqa: E402
-import pickle
-from rex_run_planner.data_prep.graph_enricher import GraphEnricher
-from rex_run_planner.route_finding import RouteFinder
 from rex_run_planner.containers import RouteConfig
+from rex_run_planner.route_finding import RouteFinder
 from rex_run_planner.route_plotting import (
     plot_route,
     generate_filename,
@@ -26,40 +23,38 @@ from rex_run_planner.route_plotting import (
 # TODO: Check handling of max_condense_passes, should be possible to remove
 
 config = RouteConfig(
-    start_lat=50.969540,
-    start_lon=-1.383318,
-    max_distance=10,
-    route_mode="hilly",
-    dist_mode="metric",
-    elevation_interval=10,
-    max_candidates=16000,
-    max_condense_passes=5,
+    # start_lat=50.969540,
+    # start_lon=-1.383318,
+    # Trying somewhere a bit further afield
+    start_lat=51.049676,
+    start_lon=-1.311284,
+    max_distance=42,
+    route_mode="flat",
+    max_candidates=2048
 )
 
-try:
-    with open("./data/hampshire-latest-cond.nx", "rb") as fobj:
-        graph = pickle.load(fobj)
-except FileNotFoundError:
-    enricher = GraphEnricher("./data/hampshire-latest.json", config)
-    enricher.enrich_graph(
-        full_target_loc="./data/hampshire-latest-full.nx",
-        cond_target_loc="./data/hampshire-latest-cond.nx",
-    )
-    graph = enricher.graph
-    del enricher
+DATA_DIR = '/home/ross/repos/refinement/data'
 
-finder = RouteFinder(graph=graph, config=config)
+with open(os.path.join(DATA_DIR, 'condensed_graph.nx'), 'rb') as fobj:
+    cond_graph = pickle.load(fobj)
+
+finder = RouteFinder(graph=cond_graph, config=config)
 routes = finder.find_routes()
 
-del graph
-with open("./data/hampshire-latest-full.nx", "rb") as fobj:
-    graph = pickle.load(fobj)
+# with open(os.path.join(DATA_DIR, "cached_routes.pkl"), 'wb') as fobj:
+#     pickle.dump(routes, fobj)
 
-selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.85)
+# with open(os.path.join(DATA_DIR, "cached_routes.pkl"), 'rb') as fobj:
+#     routes = pickle.load(fobj)
+
+with open(os.path.join(DATA_DIR, 'full_graph.nx'), 'rb') as fobj:
+    full_graph = pickle.load(fobj)
+
+selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.9)
 selected_routes = selector.select_routes()
 
 
 for route in selected_routes[:10]:
-    plot = plot_route(graph, route)
+    plot = plot_route(full_graph, route)
     fname = generate_filename(route)
-    plot.write_html(f"./plots/{fname}.html")
+    plot.write_html(f"./plots/{config.route_mode}/{fname}.html")
