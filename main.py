@@ -18,6 +18,45 @@ from rex_run_planner.route_plotting import (
     RouteSelector,
 )
 
+"""
+Plan:
+ Phase 1 - Get something tangible
+ * Set up route_finder as a separate package, to accept a coarsely filtered
+   networkx graph as an input.
+ * Fully paramaterize all aspects of the route finding algorithm, including
+   edge types now that they're available in the graph
+ * Build out a basic webapp as a PoC
+ 
+ Phase 2 - Foundations for scalable webapp
+ * Look in to options for improving cassandra cluster performance locally,
+   suspect memory causing bottleneck at present
+ * If feasible, switch refinement over to using graphframes rather than
+   networkx for processing.
+   
+   https://docs.databricks.com/en/_extras/notebooks/source/graphframes-user-guide-py.html
+   https://github.com/graphframes/graphframes/issues/408 - python package install
+   jar file will also need adding as a python dependency
+ 
+ Phase 3 - Set up the data preparation pipeline
+  Single k8s stack with all required components
+  * Cassandra database
+  * pySpark cluster
+  * airflow
+    * triggers ingestion & processing when new files land
+  * custom ingestion script
+    https://docs.datastax.com/en/dsbulk/docs/overview/dsbulk-about.html
+    Loads data from lidar files into the database
+  * custom tagging script
+    * triggers tagging of nodes/edges with elevation data once ingestion completes
+  * custom parsing script
+    osm to networkx, one-off run, arguably could be left out of stack
+
+ Phase 4 - Full build
+  * Set up a separate k8s stack for the webapp (or add to existing? check
+    suggested design patterns)
+  * Move things over to the cloud
+"""
+
 # TODO: Parameterise 10% variation in max distance, remove all hard-coded
 #       values
 # TODO: Set up quick experiment to determine optimal no. candidates
