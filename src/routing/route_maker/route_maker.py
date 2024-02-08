@@ -4,15 +4,22 @@ from networkx import Graph
 
 import tqdm
 
-from rex_run_planner.containers import Route, RouteConfig, StepMetrics
-from rex_run_planner.data_prep.graph_trimmer import GraphTrimmer
-from rex_run_planner.route_finding.route_pruner import RoutePruner
-from rex_run_planner.route_finding.utilities import find_nearest_node
+from routing.containers.routes import Route, RouteConfig, StepMetrics
+from routing.graph_utils.selector.selector import fetch_nx_graph
+from routing.route_maker.utilities import find_nearest_node
+from routing.route_pruner.route_pruner import RoutePruner
 
-# TODO: Investigate ways to get this working with parallel processing
+# from rex_run_planner.containers import Route, RouteConfig, StepMetrics
+# from rex_run_planner.data_prep.graph_trimmer import GraphTrimmer
+# from rex_run_planner.route_finding.route_pruner import RoutePruner
+# from rex_run_planner.route_finding.utilities import find_nearest_node
+
+# TODO: Make this more configurable
+# TODO: Use full graph to find nearest start point, reinstate all nodes
+#       for the edge it's found on (logic as part of condenser)
 
 
-class RouteFinder:
+class RouteMaker:
     """Main route finder class for the application, given a graph containing
     enriched OSM/Defra data create a circular route based on a starting
     point & a max distance.
@@ -34,13 +41,11 @@ class RouteFinder:
               route
         """
 
-        self.graph = graph
         self.config = config
 
-        self.trimmer = GraphTrimmer(
-            graph,
-            config,
-        )
+        # Not yet defined, shows intended logic
+        self.graph = fetch_nx_graph(config)
+
         self.pruner = RoutePruner(
             graph,
             config,
@@ -79,7 +84,12 @@ class RouteFinder:
             self.graph, self.config.start_lat, self.config.start_lon
         )
 
-        seed = Route(route=[start_node], visited={start_node})
+        seed = Route(
+            route_id="seed",
+            current_position=start_node,
+            route=[start_node],
+            visited={start_node},
+        )
 
         return seed
 
@@ -121,11 +131,11 @@ class RouteFinder:
         except IndexError:
             prev_node = None
         visited = route.visited
-        remaining = (self.config.max_distance * 1.1) - route.distance
-        remaining_perc = remaining / (self.config.max_distance * 1.1)
+        remaining = (self.config.target_distance * 1.1) - route.distance
+        remaining_perc = remaining / (self.config.target_distance * 1.1)
 
         def check_if_valid(node: int) -> bool:
-            """Only allow nodes which have not yet been visited, wave this
+            """Only allow nodes which have not yet been visited, waive this
             during the last 5% of a route to allow returns to the start
 
             Args:
@@ -241,12 +251,12 @@ class RouteFinder:
         cur_pos = route.route[-1]
 
         # Route is too long
-        if route.distance >= self.config.max_distance * 1.1:
+        if route.distance >= self.config.max_distance:
             return "invalid"
 
         # Route cannot be completed without becoming too long
         remaining = self.graph.nodes[cur_pos]["dist_to_start"]
-        if (route.distance + remaining) >= self.config.max_distance * 1.1:
+        if (route.distance + remaining) >= self.config.max_distance:
             return "invalid"
 
         # Route is circular
@@ -254,9 +264,9 @@ class RouteFinder:
         if start_pos == cur_pos:
             # Route is of correct distance
             if (
-                (self.config.max_distance / 1.1)
+                (self.config.min_distance)
                 <= route.distance
-                <= (self.config.max_distance * 1.1)
+                <= (self.config.max_distance)
             ):
                 return "complete"
             else:
@@ -279,7 +289,7 @@ class RouteFinder:
             iter_dist = sum(route.distance for route in self.candidates)
             avg_distance = iter_dist / n_candidates
         else:
-            avg_distance = self.config.max_distance * 1.1
+            avg_distance = self.config.max_distance
 
         pbar.update(1)
         pbar.set_description(
@@ -302,9 +312,9 @@ class RouteFinder:
 
         # Trim down the internal graph to a circle of radius max distance / 2
         start_node = self.candidates[0].route[0]
-        self.graph = self.trimmer.generate_coarse_subgraph(start_node)
-        self.graph = self.trimmer.tag_distances_to_start(start_node)
-        self.graph = self.trimmer.generate_fine_subgraph()
+        # self.graph = self.trimmer.generate_coarse_subgraph(start_node)
+        # self.graph = self.trimmer.tag_distances_to_start(start_node)
+        # self.graph = self.trimmer.generate_fine_subgraph()
 
         # Recursively check for circular routes
         pbar = tqdm.tqdm()

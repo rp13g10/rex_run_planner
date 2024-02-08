@@ -1,10 +1,6 @@
 from typing import List, Set, Optional, Tuple
 from dataclasses import dataclass
 
-# TODO: Document the arguments for these classes properly
-# TODO: Check whether slots can be used to minimise memory footprint of these
-#       classes
-
 
 @dataclass
 class StepMetrics:
@@ -47,15 +43,18 @@ class Route:
           routes"""
 
     route: List[int]
+    route_id: str
+
+    current_position: int
     visited: Set[int]
+    terminal_square: Optional[Tuple[int, int]] = None
+
     distance: float = 0.0
     elevation_gain: float = 0.0
     elevation_loss: float = 0.0
     elevation_gain_potential: float = 0.0
     elevation_loss_potential: float = 0.0
     ratio: float = 0.0
-    route_id: str = "seed"
-    terminal_square: Optional[Tuple[int, int]] = None
 
 
 @dataclass
@@ -65,68 +64,29 @@ class RouteConfig:
     Args:
         start_lat (float): Latitude for the route start point
         start_lon (float): Longitude for the route start point
-        max_distance (float): Max distance for the route
+        target_distance (float): Target distance for the route (in km)
+        tolerance (float): How far above/below the target distance a
+          completed route can be while still being considered valid
         route_mode (str): Set to 'hilly' to generate the hilliest possible
           route, or 'flat' for the flattest possible route
-        dist_mode (str): Whether to calculate distances in 'metric' or
-          'imperial'
-        elevation_interval (int): When estimating elevation gain between
-          points, this determines how frequently the elevation should be
-          sampled. Lower values will give more accurate elevation gain/loss
-          metrics, higher values will result in faster script execution.
         max_candidates (int): The maximum number of candidate routes which
           should be held in memory. Lower this to increase calculation speed,
           increase it to potentially increase the quality of routes generated.
-        max_condense_passes (int): Determines how many times the internal map
-          should be processed to minimise its size. Decreasing this may improve
-          processing times, but the benefit is likely to be negligible.
+
     """
 
     start_lat: float
     start_lon: float
-    max_distance: float
+
+    target_distance: float
+    tolerance: float
+
+    terrain_types: List[str]
+
     route_mode: str
-    dist_mode: str
-    elevation_interval: int = 10
-    max_candidates: int = 32000
-    max_condense_passes: int = 5
+    max_candidates: int
 
+    def __init__(self):
 
-@dataclass
-class BBox:
-    """Contains information about the physical boundaries of one or more
-    routes
-
-    Args:
-        min_lat (float): Minimum latitude
-        min_lon (float): Minimum longitude
-        max_lat (float): Maximum latitude
-        max_lon (float): Maximum longitude"""
-
-    min_lat: float
-    min_lon: float
-    max_lat: float
-    max_lon: float
-
-
-@dataclass
-class ChainMetrics:
-    """Contains information about the distance/elevation change accrued as a
-    result of stepping across all edges in a chain of nodes.
-
-    Args:
-        start (int): The start node for the provided chain
-        end (int): The end node for the provided chain
-        gain (float): The elevation gain for the provided chain, in metres
-        loss (float): The elevation loss for the provided chain, in metres
-        dist (float): The distance travelled over the provided chain, in miles
-          or kilometres depending on config.dist_mode
-        vias (List[int]): The IDs of any nodes which formed part of the chain,
-          but are no longer required as they were of order 2"""
-
-    start: int
-    end: int
-    gain: float
-    loss: float
-    dist: float
-    vias: List[int]
+        self.min_distance = self.target_distance / (1 + self.tolerance)
+        self.max_distance = self.target_distance * (1 + self.tolerance)

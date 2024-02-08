@@ -5,7 +5,8 @@ from typing import Dict, List, Tuple
 import numpy as np
 from networkx import Graph
 
-from rex_run_planner.containers import RouteConfig, Route, BBox
+from routing.containers.routes import RouteConfig, Route
+from routing.containers.pruning import BBox
 
 
 class RoutePruner:
