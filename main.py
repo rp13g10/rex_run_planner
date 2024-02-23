@@ -1,41 +1,29 @@
 """In the absence of a web frontend, this script is used to trigger library
 calls and generate/plot routes"""
 
-# TODO: Fix this properly
-import sys
-
-sys.path.append("/mnt/c/rpiper/repos")
-
-# pylint: disable=wrong-import-position
-# ruff: noqa: E402
-import pickle
-from rex_run_planner.data_prep.graph_enricher import GraphEnricher
-from rex_run_planner.route_finding import RouteFinder
-from rex_run_planner.containers import RouteConfig
-from rex_run_planner.route_plotting import (
-    plot_route,
-    generate_filename,
-    RouteSelector,
-)
+from routing.containers.routes import RouteConfig
+from routing.route_maker.route_maker import RouteMaker
+from routing.route_maker.route_selector import RouteSelector
+from routing.plotting.plotting import plot_route, generate_filename
 
 """
 Plan:
  Phase 1 - Get something tangible
- * Set up route_finder as a separate package, to accept a coarsely filtered
-   networkx graph as an input.
- * Fully paramaterize all aspects of the route finding algorithm, including
-   edge types now that they're available in the graph
+ * Finish off refactor, clear out archived code once satisfied
+ * Improve static plotting utilities
+   * Look in to using Folium / dash-leaflet
+   * Folium has a ColorLine option which could do this
+ * Use plots to validate against Strava
+   * Elevation profiles in particular should be very helpful
  * Build out a basic webapp as a PoC
+ * Set up function to spit out .gpx files
  
  Phase 2 - Foundations for scalable webapp
  * Look in to options for improving cassandra cluster performance locally,
    suspect memory causing bottleneck at present
- * If feasible, switch refinement over to using graphframes rather than
-   networkx for processing.
-   
-   https://docs.databricks.com/en/_extras/notebooks/source/graphframes-user-guide-py.html
-   https://github.com/graphframes/graphframes/issues/408 - python package install
-   jar file will also need adding as a python dependency
+ * Check whether there is any way to use partitions with graphframes
+ * Swap over to using Docker for pySpark
+ * Sort out your requirements files! There should not be missing dependencies
  
  Phase 3 - Set up the data preparation pipeline
   Single k8s stack with all required components
@@ -57,48 +45,27 @@ Plan:
   * Move things over to the cloud
 """
 
-# TODO: Parameterise 10% variation in max distance, remove all hard-coded
-#       values
 # TODO: Set up quick experiment to determine optimal no. candidates
 # TODO: Build out unit tests for all code created so far
 # TODO: Start building this out into a webapp once plots working properly
-# TODO: Check handling of max_condense_passes, should be possible to remove
 
 config = RouteConfig(
     start_lat=50.969540,
     start_lon=-1.383318,
-    max_distance=10,
+    target_distance=10,
     route_mode="hilly",
-    dist_mode="metric",
-    elevation_interval=10,
-    max_candidates=16000,
-    max_condense_passes=5,
+    max_candidates=2048,
+    tolerance=0.1,
 )
 
-try:
-    with open("./data/hampshire-latest-cond.nx", "rb") as fobj:
-        graph = pickle.load(fobj)
-except FileNotFoundError:
-    enricher = GraphEnricher("./data/hampshire-latest.json", config)
-    enricher.enrich_graph(
-        full_target_loc="./data/hampshire-latest-full.nx",
-        cond_target_loc="./data/hampshire-latest-cond.nx",
-    )
-    graph = enricher.graph
-    del enricher
-
-finder = RouteFinder(graph=graph, config=config)
-routes = finder.find_routes()
-
-del graph
-with open("./data/hampshire-latest-full.nx", "rb") as fobj:
-    graph = pickle.load(fobj)
+maker = RouteMaker(config)
+routes = maker.find_routes()
 
 selector = RouteSelector(routes, num_routes_to_select=25, threshold=0.85)
 selected_routes = selector.select_routes()
 
 
 for route in selected_routes[:10]:
-    plot = plot_route(graph, route)
+    plot = plot_route(maker.full_graph, route)
     fname = generate_filename(route)
-    plot.write_html(f"./plots/{fname}.html")
+    plot.write_html(f"/home/ross/repos/rex_run_planner/plots/{fname}.html")

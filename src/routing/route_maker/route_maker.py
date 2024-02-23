@@ -5,7 +5,8 @@ from networkx import Graph
 import tqdm
 
 from routing.containers.routes import Route, RouteConfig, StepMetrics
-from routing.graph_utils.selector.selector import fetch_nx_graph
+from routing.graph_utils.selector.selector import Selector
+from routing.graph_utils.condenser.condenser import GraphCondenser
 from routing.route_maker.utilities import find_nearest_node
 from routing.route_pruner.route_pruner import RoutePruner
 
@@ -27,7 +28,6 @@ class RouteMaker:
 
     def __init__(
         self,
-        graph: Graph,
         config: RouteConfig,
     ):
         """Create a route finder based on user preferences.
@@ -43,17 +43,22 @@ class RouteMaker:
 
         self.config = config
 
-        # Not yet defined, shows intended logic
-        self.graph = fetch_nx_graph(config)
+        # Fetch networkx graph from larger graphframes graph
+        selector = Selector(self.config)
+        self.full_graph = selector.retrieve_networkx_graph()
+
+        # Create a condensed representation of the selected graph
+        condenser = GraphCondenser(self.full_graph)
+        condenser.condense_graph()
+        self.graph = condenser.graph
+
+        self.start_node, self.candidates = self._create_seed_route()
+        self.completed_routes: List[Route] = []
 
         self.pruner = RoutePruner(
-            graph,
+            self.graph,
             config,
         )
-
-        # Create container objects
-        self.candidates: List[Route] = []
-        self.completed_routes: List[Route] = []
 
         # Debugging
         self.last_candidates: List[Route] = []
@@ -72,7 +77,7 @@ class RouteMaker:
 
     # Route Seeding ###########################################################
 
-    def _create_seed_route(self) -> Route:
+    def _create_seed_route(self) -> Tuple[int, List[Route]]:
         """Based on the user provided start point, generate a seed route
         starting at the closest available node.
 
@@ -80,18 +85,21 @@ class RouteMaker:
             Route: A candidate route of zero distance, starting at the node
               closest to the specified start point.
         """
+
         start_node = find_nearest_node(
             self.graph, self.config.start_lat, self.config.start_lon
         )
 
-        seed = Route(
-            route_id="seed",
-            current_position=start_node,
-            route=[start_node],
-            visited={start_node},
-        )
+        seed = [
+            Route(
+                route_id="seed",
+                current_position=start_node,
+                route=[start_node],
+                visited={start_node},
+            )
+        ]
 
-        return seed
+        return start_node, seed
 
     # Route Finding ###########################################################
 
@@ -131,8 +139,8 @@ class RouteMaker:
         except IndexError:
             prev_node = None
         visited = route.visited
-        remaining = (self.config.target_distance * 1.1) - route.distance
-        remaining_perc = remaining / (self.config.target_distance * 1.1)
+        remaining = (self.config.max_distance) - route.distance
+        remaining_perc = remaining / (self.config.max_distance)
 
         def check_if_valid(node: int) -> bool:
             """Only allow nodes which have not yet been visited, waive this
@@ -307,11 +315,8 @@ class RouteMaker:
             List[Route]: A list of completed routes
         """
 
-        # Create a starting route of zero length
-        self.candidates = [self._create_seed_route()]
-
         # Trim down the internal graph to a circle of radius max distance / 2
-        start_node = self.candidates[0].route[0]
+        # start_node = self.candidates[0].route[0]
         # self.graph = self.trimmer.generate_coarse_subgraph(start_node)
         # self.graph = self.trimmer.tag_distances_to_start(start_node)
         # self.graph = self.trimmer.generate_fine_subgraph()

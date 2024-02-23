@@ -1,5 +1,5 @@
 from typing import List, Set, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -72,7 +72,25 @@ class RouteConfig:
         max_candidates (int): The maximum number of candidate routes which
           should be held in memory. Lower this to increase calculation speed,
           increase it to potentially increase the quality of routes generated.
+        terrain_types (List[str]): The different types of terrain which should
+          be considered for this route. If not provided, all terrain types
+          will be considered. Defaults to None. Possible options are:
 
+          - footway
+          - living_street
+          - path
+          - pedestrian
+          - primary
+          - primary_link
+          - residential
+          - secondary
+          - secondary_link
+          - service
+          - steps
+          - tertiary
+          - tertiary_link
+          - track
+          - unclassified
     """
 
     start_lat: float
@@ -81,12 +99,12 @@ class RouteConfig:
     target_distance: float
     tolerance: float
 
-    terrain_types: List[str]
-
     route_mode: str
     max_candidates: int
 
-    def __init__(self):
+    terrain_types: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
 
         self.min_distance = self.target_distance / (1 + self.tolerance)
         self.max_distance = self.target_distance * (1 + self.tolerance)

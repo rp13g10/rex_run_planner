@@ -1,20 +1,19 @@
 """Contains the GraphEnricher class, which will be executed if this script
 is executed directly."""
 
-from itertools import repeat
-from math import ceil
-from typing import List, Set, Tuple, Union
+from copy import deepcopy
+from typing import List, Tuple, Union
 
 import networkx as nx
 from networkx import Graph
 from networkx.exception import NetworkXError
-from tqdm import tqdm
-from tqdm.contrib.concurrent import process_map
 
-from refinement.containers import ChainMetrics
-from refinement.graph_utils.splitter import (
-    GraphSplitter,
-)
+from routing.containers.condensing import ChainMetrics
+
+# from refinement.containers import ChainMetrics
+# from refinement.graph_utils.splitter import (
+#     GraphSplitter,
+# )
 
 
 class GraphCondenser:
@@ -24,7 +23,10 @@ class GraphCondenser:
     or only represent a bend in the route being removed.
     """
 
-    def __init__(self, graph: Graph, cb_nodes: Set[int]):
+    def __init__(
+        self,
+        graph: Graph,
+    ):
         """Create an instance of the graph enricher class based on the
         contents of the networkx graph specified by `source_path`
 
@@ -49,9 +51,9 @@ class GraphCondenser:
         # TODO: Update this docstring
 
         # Store down user preferences
-        self.graph = graph
+        self.graph = deepcopy(graph)
         self.max_condense_passes = 5
-        self.cb_nodes = cb_nodes
+        self.condense_passes = 0
 
         # Create container objects
         self.nodes_to_condense = set()
@@ -85,8 +87,6 @@ class GraphCondenser:
             if node_degree >= 3:
                 # Node is a junction, must be retained
                 continue
-            elif node_id in self.cb_nodes:
-                continue
             elif node_degree == 2:
                 # Node represents a bend in a straight line, can safely be
                 # condensed
@@ -99,10 +99,7 @@ class GraphCondenser:
 
     def _update_node_lists(self, applied_chain: List[int]):
         start_id = applied_chain[0]
-        # removed_id = applied_chain[1]
         end_id = applied_chain[2]
-
-        # self.nodes_to_condense.remove(removed_id)
 
         end_degree = self._get_node_degree(end_id)
 
@@ -147,6 +144,7 @@ class GraphCondenser:
         Returns:
             ChainMetrics: A container for the calculated metrics
         """
+
         try:
             # Fetch the two edges for the chain
             edge_1 = self.graph[chain[0]][chain[1]]
@@ -218,16 +216,11 @@ class GraphCondenser:
             except NetworkXError:
                 pass
 
-    def condense_graph(self, _iter: int = 0):
+    def condense_graph(self):
         """Disconnect all nodes from the graph which contribute only
         geometrical information (i.e. they form corners along paths/roads but
         do not represent junctions). Update the edges in the graph to skip over
         these nodes, instead going direct from one junction to the next.
-
-        Args:
-            _iter (int, optional): The number of times this function has been
-              called. This is incremented automatically and should not be
-              configured by the user. Defaults to 0.
         """
         self._remove_isolates()
         self._refresh_node_lists()
@@ -252,83 +245,12 @@ class GraphCondenser:
 
             # TODO: Update node lists based on knowledge of last node
             #       processed, rather than redoing the entire thing
-            # self._refresh_node_lists()
             self._update_node_lists(node_chain)
 
             iters += 1
 
-        if not self.cb_nodes:
-            # Dead end on a subgraph might not actually be a dead end
-            self._remove_dead_ends()
+        self._remove_dead_ends()
 
-        if _iter < self.max_condense_passes:
-            self.condense_graph(_iter=_iter + 1)
-
-
-def _condense_subgraph(subgraph: Graph, edge_nodes: Set[int]) -> Graph:
-    """Condense a single subgraph and return it
-
-    Args:
-        subgraph (Graph): The subgraph to be condensed
-        edge_nodes (Set[int]): A set of nodes which are at the very edge of
-          the subgraph. These will be excluded from any checks for dead-end
-          edges as they may continue into adjacent grid squares.
-
-    Returns:
-        Graph: A condensed representation of the provided graph
-    """
-    condenser = GraphCondenser(subgraph, edge_nodes)
-    condenser.condense_graph()
-
-    return condenser.graph
-
-
-def _condense_subgraph_star(args):
-    """Wrapper function, allows use of _condense_subgraph with process_map
-    by expanding out all provided arguments"""
-    return _condense_subgraph(*args)
-
-
-def condense_graph(graph: Graph) -> Graph:
-    """For a given graph, minimise its size in-memory by removing any nodes
-    which do not correspond to a junction. Paths/roads will be represented by
-    a single edge, rather than a chain of edges. The intermediate nodes
-    traversed by each edge will instead be recorded in the 'via' attribute
-    of each new edge.
-
-    Args:
-        graph (Graph): The graph to be condensed
-
-    Returns:
-        Graph: A condensed version of the input graph
-    """
-
-    # Split the graph across a grid
-    no_subgraphs = ceil(len(graph.nodes) / 10000)
-
-    splitter = GraphSplitter(graph, no_subgraphs=no_subgraphs)
-    splitter.explode_graph()
-    cb_nodes = splitter.edge_nodes
-
-    # Condense each grid separately
-    map_args = zip(splitter.subgraphs.values(), repeat(cb_nodes))
-    new_subgraphs = process_map(
-        _condense_subgraph_star,
-        map_args,
-        desc="Condensing subgraphs",
-        tqdm_class=tqdm,
-        total=len(splitter.grid),
-        # max_workers=8,
-    )
-
-    # Re-combine the condensed subgraphs
-    for new_subgraph in new_subgraphs:
-        subgraph_id = new_subgraph.graph["grid_square"]
-        splitter.subgraphs[subgraph_id] = new_subgraph
-    splitter.rebuild_graph()
-
-    # Perform a mop-up to pick up any edges which spanned more than one
-    # subgraph
-    graph = _condense_subgraph(splitter.graph, set())
-
-    return graph
+        if self.condense_passes < self.max_condense_passes:
+            self.condense_passes += 1
+            self.condense_graph()

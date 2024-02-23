@@ -7,7 +7,5 @@ setup(
     version="0.1.0",
     where="src",
     include="routing",
-    setup_requires=[
-        "networkx>=3.2.0",
-    ],
+    setup_requires=["networkx>=3.2.0", "pyspark", "geopy"],
 )
