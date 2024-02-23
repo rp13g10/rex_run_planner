@@ -53,13 +53,9 @@ class Selector:
         nodes = self.sql.read.parquet(
             "/home/ross/repos/refinement/data/enriched_nodes"
         )
-        nodes = nodes.withColumnRenamed("node_id", "id")
 
         edges = self.sql.read.parquet(
             "/home/ross/repos/refinement/data/enriched_edges"
-        )
-        edges = edges.withColumnRenamed("start_id", "src").withColumnRenamed(
-            "end_id", "dst"
         )
 
         graph = GraphFrame(nodes, edges)
