@@ -1,19 +1,16 @@
-from copy import deepcopy
-from typing import List, Iterable, Tuple
-from networkx import Graph
+"""Primary class which handles the creation of circular routes according
+to the user provided configuration."""
+
+from typing import List, Tuple
 
 import tqdm
 
-from routing.containers.routes import Route, RouteConfig, StepMetrics
+from routing.containers.routes import Route, RouteConfig
 from routing.graph_utils.selector.selector import Selector
 from routing.graph_utils.condenser.condenser import GraphCondenser
 from routing.route_maker.utilities import find_nearest_node
+from routing.route_maker.zimmer import Zimmer
 from routing.route_pruner.route_pruner import RoutePruner
-
-# from rex_run_planner.containers import Route, RouteConfig, StepMetrics
-# from rex_run_planner.data_prep.graph_trimmer import GraphTrimmer
-# from rex_run_planner.route_finding.route_pruner import RoutePruner
-# from rex_run_planner.route_finding.utilities import find_nearest_node
 
 # TODO: Make this more configurable
 # TODO: Use full graph to find nearest start point, reinstate all nodes
@@ -51,6 +48,8 @@ class RouteMaker:
         condenser = GraphCondenser(self.full_graph)
         condenser.condense_graph()
         self.graph = condenser.graph
+
+        self.zimmer = Zimmer(self.graph, self.config)
 
         self.start_node, self.candidates = self._create_seed_route()
         self.completed_routes: List[Route] = []
@@ -122,166 +121,6 @@ class RouteMaker:
         route.visited.remove(start_pos)
         return route
 
-    def _find_neighbouring_nodes(self, route: Route) -> Iterable[int]:
-        """For a candidate route, find all nodes which are accessible from
-        the current end point of the route.
-
-        Args:
-            route (Route): A candidate route
-
-        Returns:
-            Iterable[int]: A generator containing all neighbouring node IDs
-        """
-
-        cur_node = route.route[-1]
-        try:
-            prev_node = route.route[-2]
-        except IndexError:
-            prev_node = None
-        visited = route.visited
-        remaining = (self.config.max_distance) - route.distance
-        remaining_perc = remaining / (self.config.max_distance)
-
-        def check_if_valid(node: int) -> bool:
-            """Only allow nodes which have not yet been visited, waive this
-            during the last 5% of a route to allow returns to the start
-
-            Args:
-                node (int): A possible neighbouring node
-
-            Returns:
-                bool: Whether or not the node can be stepped to
-            """
-            if node not in visited:
-                return True
-            elif remaining_perc <= 0.05:
-                if node == prev_node:
-                    return False
-                return True
-            return False
-
-        # Routes are not allowed to re-visit nodes, no running back & forth
-        # up a hill!
-        neighbours = filter(check_if_valid, self.graph.neighbors(cur_node))
-
-        return neighbours
-
-    def _fetch_step_metrics(self, route: Route, next_node: int) -> StepMetrics:
-        """For a candidate route, calculate the change in distance & elevation
-        when moving from the end point to the specified neighbour. Record any
-        intermediate nodes which are traversed when making this journey.
-
-        Args:
-            route (Route): A candidate route
-            next_node (int): The ID of a neighbouring node
-
-        Returns:
-            StepMetrics: The calculated metrics for this step
-        """
-        cur_node = route.route[-1]
-
-        step = self.graph[cur_node][next_node]
-        distance = step["distance"]
-        gain = step["elevation_gain"]
-        loss = step["elevation_loss"]
-        via = step.get("via", [])
-
-        step_metrics = StepMetrics(
-            distance=distance,
-            elevation_gain=gain,
-            elevation_loss=loss,
-            via=via,
-        )
-
-        return step_metrics
-
-    def _generate_new_route(
-        self, route: Route, cand_inx: int, neigh_inx: int
-    ) -> Route:
-        """Generate a copy of the provided route, giving it a new route ID
-        based on the number of candidates & neighbours which have been
-        processed so far.
-
-        Args:
-            route (Route): A candidate route
-            cand_inx (int): The number of candidate routes processed so far
-            neigh_inx (int): The number of neighbours processed for the current
-              candidate so far
-
-        Returns:
-            Route: A copy of the candidate route with an updated route_id
-        """
-        new_route = deepcopy(route)
-        new_route.route_id = f"{cand_inx}_{neigh_inx}"
-
-        return new_route
-
-    def _step_to_next_node(
-        self, route: Route, next_node: int, step_metrics: StepMetrics
-    ) -> Route:
-        """For a given route, update its properties to reflect the result of
-        taking a step to a neighbouring node
-
-        Args:
-            route (Route): A candidate route
-            next_node (int): The neighbouring node to step to
-            step_metrics (StepMetrics): The impact of making this step
-
-        Returns:
-            Route: An updated candidate route, which now ends at 'next_node'
-        """
-
-        route.route += step_metrics.via
-        route.route.append(next_node)
-
-        route.visited.add(next_node)
-
-        # TODO: Consider enabling arithmetic for route + step metrics
-        route.distance += step_metrics.distance
-        route.elevation_gain += step_metrics.elevation_gain
-        route.elevation_loss += step_metrics.elevation_loss
-
-        return route
-
-    def _validate_route(self, route: Route) -> str:
-        """For a newly generated candidate route, validate that it is still
-        within the required parameters. If not, then it should be discarded.
-
-        Args:
-            route (Route): A candidate route
-
-        Returns:
-            str: The status of the route, one of:
-              - complete
-              - valid
-              - invalid
-        """
-        cur_pos = route.route[-1]
-
-        # Route is too long
-        if route.distance >= self.config.max_distance:
-            return "invalid"
-
-        # Route cannot be completed without becoming too long
-        remaining = self.graph.nodes[cur_pos]["dist_to_start"]
-        if (route.distance + remaining) >= self.config.max_distance:
-            return "invalid"
-
-        # Route is circular
-        start_pos = route.route[0]
-        if start_pos == cur_pos:
-            # Route is of correct distance
-            if (
-                (self.config.min_distance)
-                <= route.distance
-                <= (self.config.max_distance)
-            ):
-                return "complete"
-            else:
-                return "invalid"
-
-        return "valid"
-
     def _update_progress_bar(self, pbar: tqdm.tqdm):
         """Update the progress bar with relevant metrics which enable the
         user to track the calculation as it progresses
@@ -295,7 +134,8 @@ class RouteMaker:
 
         if n_candidates:
             iter_dist = sum(route.distance for route in self.candidates)
-            avg_distance = iter_dist / n_candidates
+            iter_dist += sum(route.distance for route in self.completed_routes)
+            avg_distance = iter_dist / (n_candidates + n_valid)
         else:
             avg_distance = self.config.max_distance
 
@@ -307,6 +147,9 @@ class RouteMaker:
             )
         )
 
+    def _generate_route_id(self, cand_inx: int, step_inx: int) -> str:
+        return f"{cand_inx}_{step_inx}"
+
     def find_routes(self) -> List[Route]:
         """Main user-facing function for this class. Generates a list of
         circular routes according to the user's preferences.
@@ -314,12 +157,6 @@ class RouteMaker:
         Returns:
             List[Route]: A list of completed routes
         """
-
-        # Trim down the internal graph to a circle of radius max distance / 2
-        # start_node = self.candidates[0].route[0]
-        # self.graph = self.trimmer.generate_coarse_subgraph(start_node)
-        # self.graph = self.trimmer.tag_distances_to_start(start_node)
-        # self.graph = self.trimmer.generate_fine_subgraph()
 
         # Recursively check for circular routes
         pbar = tqdm.tqdm()
@@ -329,23 +166,17 @@ class RouteMaker:
             new_candidates = []
             for cand_inx, candidate in enumerate(self.candidates):
                 # Check which nodes can be reached
-                neighbours = self._find_neighbouring_nodes(candidate)
+                possible_steps = self.zimmer.generate_possible_steps(candidate)
 
                 # For each node which can be reached
-                for neigh_inx, neighbour in enumerate(neighbours):
-                    # Create a new candidate route
-                    new_candidate = self._generate_new_route(
-                        candidate, cand_inx, neigh_inx
-                    )
+                for step_inx, possible_step in enumerate(possible_steps):
 
-                    # Calculate the impact of stepping to the neighbour
-                    step_metrics = self._fetch_step_metrics(
-                        new_candidate, neighbour
-                    )
-
-                    # Update the new candidate to reflect this step
-                    new_candidate = self._step_to_next_node(
-                        new_candidate, neighbour, step_metrics
+                    # Step to the next node and validate the resulting route
+                    new_id = self._generate_route_id(cand_inx, step_inx)
+                    candidate_status, new_candidate = (
+                        self.zimmer.step_to_next_node(
+                            candidate, possible_step, new_id
+                        )
                     )
 
                     # Make sure the route can get back to the starting node
@@ -355,7 +186,6 @@ class RouteMaker:
                         )
 
                     # Check whether the route is still valid
-                    candidate_status = self._validate_route(new_candidate)
                     if candidate_status == "complete":
                         self.completed_routes.append(new_candidate)
                     elif candidate_status == "valid":
