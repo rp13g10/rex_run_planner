@@ -42,20 +42,25 @@ class Zimmer:
             bool: Whether or not the provided node_id would be a valid step
               to take
         """
-        try:
-            prev_node = route.route[-2]
-        except IndexError:
-            prev_node = None
+        # try:
+        #     prev_node = route.route[-2]
+        # except IndexError:
+        #     prev_node = None
         visited = route.visited
-        remaining = self.config.target_distance - route.distance
-        remaining_perc = remaining / (self.config.max_distance)
+        # remaining = self.config.target_distance - route.distance
+        # remaining_perc = remaining / (self.config.max_distance)
 
         if node_id not in visited:
             return True
-        elif remaining_perc <= 0.05:
-            if node_id == prev_node:
-                return False
+
+        first_3_nodes = set(route.route[:3])
+        last_3_nodes = set(route.route[-3:])
+        if node_id in first_3_nodes and node_id not in last_3_nodes:
             return True
+        # elif remaining_perc <= 0.05:
+        #     if node_id == prev_node:
+        #         return False
+        #     return True
         return False
 
     def generate_possible_steps(self, route: Route) -> Iterable[int]:

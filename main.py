@@ -4,7 +4,11 @@ calls and generate/plot routes"""
 from routing.containers.routes import RouteConfig
 from routing.route_maker.route_maker import RouteMaker
 from routing.route_maker.route_selector import RouteSelector
-from routing.plotting.plotting import plot_route, generate_filename
+from routing.plotting.plotting import (
+    plot_route,
+    plot_elevation_profile,
+    generate_filename,
+)
 
 """
 Plan:
@@ -66,6 +70,12 @@ selected_routes = selector.select_routes()
 
 
 for route in selected_routes[:10]:
-    plot = plot_route(maker.full_graph, route)
+    route_plot = plot_route(maker.full_graph, route)
+    profile_plot = plot_elevation_profile(maker.full_graph, route)
     fname = generate_filename(route)
-    plot.write_html(f"/home/ross/repos/rex_run_planner/plots/{fname}.html")
+    route_plot.write_html(
+        f"/home/ross/repos/rex_run_planner/plots/{fname}_route.html"
+    )
+    profile_plot.write_html(
+        f"/home/ross/repos/rex_run_planner/plots/{fname}_profile.html"
+    )
